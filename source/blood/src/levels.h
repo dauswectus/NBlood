@@ -114,6 +114,8 @@ extern int gEpisodeCount;
 extern int gNextLevel;
 extern bool gGameStarted;
 extern int gLevelTime;
+extern int gRunTime;
+extern int gEpTime;
 
 void levelInitINI(const char *pzIni);
 void levelOverrideINI(const char *pzIni);

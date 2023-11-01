@@ -62,6 +62,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "trig.h"
 #include "triggers.h"
 #include "view.h"
+#include "endgame.h"
 #ifdef NOONE_EXTENSIONS
 #include "aicdud.h"
 #include "nnexts.h"
@@ -644,7 +645,7 @@ void aiActivateDude(spritetype *pSprite, XSPRITE *pXSprite)
     }
     case kDudeGargoyleStatueFlesh:
     case kDudeGargoyleStatueStone:
-        
+        gKillMgr.AddCount(1);
         #ifdef NOONE_EXTENSIONS
         // play gargoyle statue breaking animation if data1 = 1.
         if (gModernMap && pXSprite->data1 == 1) {

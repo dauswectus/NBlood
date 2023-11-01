@@ -33,6 +33,12 @@ struct INIDESCRIPTION {
     int nArts;
 };
 
+struct LEVELNAME {
+    int levelTime;
+    int Ep;
+    int Lvl;
+};
+
 struct INICHAIN {
     INICHAIN *pNext;
     char zName[BMAX_PATH];
@@ -55,6 +61,7 @@ extern int32_t gNoSetup;
 extern short BloodVersion;
 extern int gNetPlayers;
 extern bool gRestartGame;
+extern bool endMultiEpisode;
 #define GAMEUPDATEAVGTIMENUMSAMPLES 100
 extern double g_gameUpdateTime, g_gameUpdateAndDrawTime;
 extern double g_gameUpdateAvgTime;
@@ -72,6 +79,15 @@ extern int gCacheMiss;
 extern int gDoQuickSave;
 extern int gMenuPicnum;
 
+extern int currentEpLevel;
+extern int currentLevel;
+extern int levelCounter;
+extern LEVELNAME levelName[99];
+extern bool e1active;
+extern bool e2active;
+extern bool e3active;
+extern bool e4active;
+
 void QuitGame(void);
 void PreloadCache(void);
 void StartLevel(GAMEOPTIONS *gameOptions);
@@ -84,3 +100,9 @@ bool VanillaMode(void);
 bool fileExistsRFF(int id, const char* ext);
 int sndTryPlaySpecialMusic(int nMusic);
 void sndPlaySpecialMusicOrNothing(int nMusic);
+void FixupSecretCounter(int ep, int lvl, int amount);
+void FixupKillCounter(int ep, int lvl, int amount);
+void ResetRunTimer(void);
+void ResetLevelTimes(void);
+void ShowLevelTimes(void);
+void AddLevelTimes(int time, int ep, int lvl);

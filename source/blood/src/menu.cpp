@@ -2637,7 +2637,7 @@ void QuickSaveGame(void)
     memset(gGameOptions.szSaveGameName, 0, sizeof(gGameOptions.szSaveGameName));
     sprintf(gGameOptions.szSaveGameName, "%s", strSaveGameName);
     gGameOptions.nSaveGameSlot = gQuickSaveSlot;
-    viewLoadingScreen(gMenuPicnum, "Saving", "Saving Your Game", strRestoreGameStrings[gQuickSaveSlot]);
+    //viewLoadingScreen(gMenuPicnum, "Saving", "Saving Your Game", strRestoreGameStrings[gQuickSaveSlot]);
     videoNextPage();
     LoadSave::SaveGame(strSaveGameName);
     gGameOptions.picEntry = gSavedOffset;
@@ -2673,7 +2673,7 @@ void QuickLoadGame(void)
     G_ModDirSnprintf(strLoadGameName, BMAX_PATH, "game00%02d.sav", gQuickLoadSlot);
     if (!testkopen(strLoadGameName, 0))
         return;
-    viewLoadingScreen(gMenuPicnum, "Loading", "Loading Saved Game", strRestoreGameStrings[gQuickLoadSlot]);
+    //viewLoadingScreen(gMenuPicnum, "Loading", "Loading Saved Game", strRestoreGameStrings[gQuickLoadSlot]);
     videoNextPage();
     LoadSave::LoadGame(strLoadGameName);
     gGameMenuMgr.Deactivate();

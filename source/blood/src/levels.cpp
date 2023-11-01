@@ -56,6 +56,8 @@ int gNextLevel;
 bool gGameStarted;
 
 int gLevelTime;
+int gRunTime;
+int gEpTime;
 
 char BloodIniFile[BMAX_PATH] = "BLOOD.INI";
 char BloodIniPre[BMAX_PATH];

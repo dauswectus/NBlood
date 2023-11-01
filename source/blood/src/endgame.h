@@ -59,6 +59,14 @@ public:
     void Draw(void);
 };
 
+class CTimeMgr {
+public:
+    void DrawEp(void);
+    void DrawRun(void);
+    void DrawIL(void);
+};
+
 extern CEndGameMgr gEndGameMgr;
 extern CSecretMgr gSecretMgr;
 extern CKillMgr gKillMgr;
+extern CTimeMgr gTimeMgr;

@@ -58,11 +58,18 @@ void CEndGameMgr::Draw(void)
         }
         gKillMgr.Draw();
         gSecretMgr.Draw();
+        gTimeMgr.DrawRun();
+        gTimeMgr.DrawEp();
+        gTimeMgr.DrawIL();
     }
     else
     {
-        viewDrawText(1, "FRAG STATS", 160, nY, -128, 0, 1, 0);
+        viewDrawText(1, "LEVEL STATS", 160, nY, -128, 0, 1, 0);
         gKillMgr.Draw();
+        gSecretMgr.Draw();
+        gTimeMgr.DrawRun();
+        gTimeMgr.DrawEp();
+        gTimeMgr.DrawIL();
     }
     if (/*dword_28E3D4 != 1 && */((int)totalclock&32))
     {
@@ -114,6 +121,14 @@ extern bool gStartNewGame;
 
 void CEndGameMgr::Finish(void)
 {
+    if (gGameOptions.uGameFlags & kGameFlagEnding)
+    {
+        gGameOptions.uGameFlags &= ~(kGameFlagContinuing | kGameFlagEnding);
+        gRestartGame = 1;
+        gQuitGame = 1;
+    }
+    ShowLevelTimes();
+
     levelSetupOptions(gGameOptions.nEpisode, gNextLevel);
     gInitialNetPlayers = numplayers;
     //if (FXDevice != -1)
@@ -142,7 +157,7 @@ void CKillMgr::AddCount(int nCount)
 void CKillMgr::AddCount(spritetype* pSprite)
 {
     dassert(pSprite != NULL);
-    if (pSprite->statnum == kStatDude && pSprite->type != kDudeBat && pSprite->type != kDudeRat && pSprite->type != kDudeInnocent && pSprite->type != kDudeBurningInnocent)
+    if (pSprite->statnum == kStatDude && pSprite->type != kDudeBat && pSprite->type != kDudeRat && pSprite->type != kDudeInnocent && pSprite->type != kDudeBurningInnocent && pSprite->type != kDudeGargoyleStatueFlesh && pSprite->type != kDudeGargoyleStatueStone)
         at0++;
 }
 
@@ -188,25 +203,31 @@ void CKillMgr::Draw(void)
     }
     else
     {
-        viewDrawText(3, "#", 85, 35, -128, 0, 0, 1);
-        viewDrawText(3, "NAME", 100, 35, -128, 0, 0, 1);
-        viewDrawText(3, "FRAGS", 210, 35, -128, 0, 0, 1);
-        int nStart = 0;
-        int nEnd = gInitialNetPlayers;
-        //if (dword_28E3D4 == 1)
+        viewDrawText(1, "KILLS:", 75, 50, -128, 0, 0, 1);
+        sprintf(pBuffer, "%2d", at4);
+        viewDrawText(1, pBuffer, 160, 50, -128, 0, 0, 1);
+        viewDrawText(1, "OF", 190, 50, -128, 0, 0, 1);
+        sprintf(pBuffer, "%2d", at0);
+        viewDrawText(1, pBuffer, 220, 50, -128, 0, 0, 1);
+        //viewDrawText(3, "#", 85, 35, -128, 0, 0, 1);
+        //viewDrawText(3, "NAME", 100, 35, -128, 0, 0, 1);
+        //viewDrawText(3, "FRAGS", 210, 35, -128, 0, 0, 1);
+        //int nStart = 0;
+        //int nEnd = gInitialNetPlayers;
+        ////if (dword_28E3D4 == 1)
+        ////{
+        ////    nStart++;
+        ////    nEnd++;
+        ////}
+        //for (int i = nStart; i < nEnd; i++)
         //{
-        //    nStart++;
-        //    nEnd++;
+        //    sprintf(pBuffer, "%-2d", i);
+        //    viewDrawText(3, pBuffer, 85, 50+8*i, -128, 0, 0, 1);
+        //    sprintf(pBuffer, "%s", gProfile[i].name);
+        //    viewDrawText(3, pBuffer, 100, 50+8*i, -128, 0, 0, 1);
+        //    sprintf(pBuffer, "%d", gPlayer[i].fragCount);
+        //    viewDrawText(3, pBuffer, 210, 50+8*i, -128, 0, 0, 1);
         //}
-        for (int i = nStart; i < nEnd; i++)
-        {
-            sprintf(pBuffer, "%-2d", i);
-            viewDrawText(3, pBuffer, 85, 50+8*i, -128, 0, 0, 1);
-            sprintf(pBuffer, "%s", gProfile[i].name);
-            viewDrawText(3, pBuffer, 100, 50+8*i, -128, 0, 0, 1);
-            sprintf(pBuffer, "%d", gPlayer[i].fragCount);
-            viewDrawText(3, pBuffer, 210, 50+8*i, -128, 0, 0, 1);
-        }
     }
 }
 
@@ -244,6 +265,29 @@ void CSecretMgr::Found(int nType)
         }
     }
 }
+void CTimeMgr::DrawIL(void)
+{
+    char pBuffer[40];
+    viewDrawText(3, "IL:", 125, 105, -128, 0, 0, 1);
+    sprintf(pBuffer, " %02d:%02d.%02d", (gLevelTime / (kTicsPerSec * 60)), (gLevelTime / kTicsPerSec) % 60, ((gLevelTime % kTicsPerSec) * 33) / 10);
+    viewDrawText(3, pBuffer, 150, 105, -128, 0, 0, 1);
+}
+
+void CTimeMgr::DrawEp(void)
+{
+    char pBuffer[40];
+    viewDrawText(3, "EP:", 125, 115, -128, 0, 0, 1);
+    sprintf(pBuffer, " %02d:%02d.%02d", (gEpTime / (kTicsPerSec * 60)), (gEpTime / kTicsPerSec) % 60, ((gEpTime % kTicsPerSec) * 33) / 10);
+    viewDrawText(3, pBuffer, 150, 115, -128, 0, 0, 1);
+}
+
+void CTimeMgr::DrawRun(void)
+{
+    char pBuffer[40];
+    viewDrawText(3, "All:", 125, 125, -128, 0, 0, 1);
+    sprintf(pBuffer, " %02d:%02d.%02d", (gRunTime / (kTicsPerSec * 60)), (gRunTime / kTicsPerSec) % 60, ((gRunTime % kTicsPerSec) * 33) / 10);
+    viewDrawText(3, pBuffer, 150, 125, -128, 0, 0, 1);
+}
 
 void CSecretMgr::Draw(void)
 {
@@ -255,7 +299,7 @@ void CSecretMgr::Draw(void)
     sprintf(pBuffer, "%2d", max(gSecretMgr.nNormalSecretsFound, gSecretMgr.nAllSecrets));
     viewDrawText(1, pBuffer, 220, 70, -128, 0, 0, 1);
     if (nSuperSecretsFound > 0)
-        viewDrawText(1, "YOU FOUND A SUPER SECRET!", 160, 100, -128, 2, 1, 1);
+        viewDrawText(1, "YOU FOUND A SUPER SECRET!", 160, 90, -128, 2, 1, 1);
 }
 
 void CSecretMgr::Clear(void)
@@ -290,6 +334,7 @@ void EndGameLoadSave::Save(void)
 CEndGameMgr gEndGameMgr;
 CSecretMgr gSecretMgr;
 CKillMgr gKillMgr;
+CTimeMgr gTimeMgr;
 static EndGameLoadSave *myLoadSave;
 
 void EndGameLoadSaveConstruct(void)

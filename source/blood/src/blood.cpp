@@ -585,6 +585,10 @@ int16_t startang, startsectnum;
 void StartLevel(GAMEOPTIONS *gameOptions)
 {
     EndLevel();
+    if (!(gameOptions->uGameFlags & kGameFlagContinuing)) // if episode is in progress
+    {
+        gEpTime = 0;
+    }
     gInput = {};
     gStartNewGame = 0;
     ready2send = 0;
@@ -785,6 +789,161 @@ void StartLevel(GAMEOPTIONS *gameOptions)
     gPaused = 0;
     gGameStarted = 1;
     ready2send = 1;
+
+    //DAUS: Hardcoding some mapping issue fixes for counters.
+    FixupSecretCounter(1, 3, 19);
+    FixupSecretCounter(2, 0, 10);
+    FixupSecretCounter(3, 7, 1);
+
+    FixupKillCounter(0, 5, -1); //A gargoyle out of bounds
+    FixupKillCounter(1, 4, -4); //4 Zombies out of bounds
+    FixupKillCounter(3, 5, -4); //4 Spiders out of bounds
+
+    if (gGameOptions.nLevel == 0 && !endMultiEpisode)
+    {
+        if (gGameOptions.nEpisode == 0)
+        {
+            if (e1active == true)
+            {
+                e2active = false;
+                e3active = false;
+                e4active = false;
+                ResetRunTimer();
+            }
+            e1active = true;
+        }
+        else if (gGameOptions.nEpisode == 1)
+        {
+            if (e2active == true)
+            {
+                e1active = false;
+                e3active = false;
+                e4active = false;
+                ResetRunTimer();
+            }
+            e2active = true;
+        }
+        else if (gGameOptions.nEpisode == 2)
+        {
+            if (e3active == true)
+            {
+                e1active = false;
+                e2active = false;
+                e4active = false;
+                ResetRunTimer();
+            }
+            e3active = true;
+        }
+        else if (gGameOptions.nEpisode == 3)
+        {
+            if (e4active == true)
+            {
+                e1active = false;
+                e2active = false;
+                e3active = false;
+                ResetRunTimer();
+            }
+            e4active = true;
+        }
+        endMultiEpisode = false;
+    }
+    else
+    {
+        OSD_Printf(OSDTEXT_RED "endMultiEpisode -> false\n");
+        endMultiEpisode = false;
+    }
+
+    //OSD_Printf(OSDTEXT_RED "=========================================\n");
+    //OSD_Printf(OSDTEXT_RED "Ep: %d Lv: %d\n", gGameOptions.nEpisode, gGameOptions.nLevel);
+    //OSD_Printf(OSDTEXT_RED "E1: %d E2: %d E3: %d E4: %d \n", e1active, e2active, e3active, e4active); 
+    //OSD_Printf(OSDTEXT_RED "endMultiEpisode: %d\n", endMultiEpisode);
+}
+
+int currentEpLevel = 0;
+int currentLevel = 0;
+int levelCounter = 0;
+LEVELNAME levelName[99];
+bool e1active = false;
+bool e2active = false;
+bool e3active = false;
+bool e4active = false;
+
+void ResetRunTimer(void)
+{
+    ResetLevelTimes();
+    OSD_Printf(OSDTEXT_RED "RESET RUN! \n");
+}
+
+void ResetLevelTimes(void)
+{
+    for (int i = 0; i < 99; i++)
+    {
+        levelName[i].levelTime = 0;
+    }
+    levelCounter = 0;       
+    gRunTime = 0;
+}
+
+void ShowLevelTimes(void)
+{
+    OSD_Printf(OSDTEXT_RED "=========================================\n");
+    for (int i = 0; i < levelCounter; i++)
+    { 
+        if (levelName[i].Lvl > 20)
+        {
+            OSD_Printf(OSDTEXT_RED "=========================\n");
+            OSD_Printf(OSDTEXT_RED "Episode %d Time: %02d:%02d.%02d\n", levelName[i].Ep, (levelName[i].levelTime / (kTicsPerSec * 60)), (levelName[i].levelTime / kTicsPerSec) % 60, ((levelName[i].levelTime % kTicsPerSec) * 33) / 10);
+            OSD_Printf(OSDTEXT_RED "=========================\n");
+        }
+        else
+        {
+            OSD_Printf(OSDTEXT_RED "E%dL%d: %02d:%02d.%02d\n", levelName[i].Ep, levelName[i].Lvl, (levelName[i].levelTime / (kTicsPerSec * 60)), (levelName[i].levelTime / kTicsPerSec) % 60, ((levelName[i].levelTime % kTicsPerSec) * 33) / 10);
+        }
+    }
+    currentLevel = gGameOptions.nLevel + 1;
+    
+    OSD_Printf(OSDTEXT_RED "====================\n");
+    OSD_Printf(OSDTEXT_RED "Full Time: %02d:%02d.%02d\n", (gRunTime / (kTicsPerSec * 60)), (gRunTime / kTicsPerSec) % 60, ((gRunTime % kTicsPerSec) * 33) / 10);
+    OSD_Printf(OSDTEXT_RED "====================\n");
+    OSD_Printf(OSDTEXT_RED "=========================================\n");
+}
+
+void AddLevelTimes(int time, int ep, int lvl)
+{
+    if (levelCounter <= 99)
+    {
+        currentEpLevel++;
+        for (int i = levelCounter; i < levelCounter + 1; i++)
+        {
+            levelName[i].levelTime = time;
+            levelName[i].Ep = ep + 1;
+            if (lvl < 20)
+            {
+                levelName[i].Lvl = currentEpLevel;
+            }
+            else
+            {
+                levelName[i].Lvl = lvl;
+            }
+        }
+        levelCounter++;
+    }
+}
+
+void FixupSecretCounter(int ep, int lvl, int amount)
+{
+    if (gGameOptions.nEpisode == ep && gGameOptions.nLevel == lvl)
+    {
+        gSecretMgr.SetCount(amount);
+    }
+}
+
+void FixupKillCounter(int ep, int lvl, int amount)
+{
+    if (gGameOptions.nEpisode == ep && gGameOptions.nLevel == lvl)
+    {
+        gKillMgr.AddCount(amount);
+    }
 }
 
 void StartNetworkLevel(void)
@@ -1018,6 +1177,7 @@ void LocalKeys(void)
 }
 
 bool gRestartGame = false;
+bool endMultiEpisode = false;
 
 void ProcessFrame(void)
 {
@@ -1111,9 +1271,6 @@ void ProcessFrame(void)
             gChokeCounter -= kTicsPerSec;
         }
     }
-    gLevelTime++;
-    gFrame++;
-    gFrameClock += kTicsPerFrame;
     if ((gGameOptions.uGameFlags&kGameFlagContinuing) && !gStartNewGame)
     {
         ready2send = 0;
@@ -1129,8 +1286,12 @@ void ProcessFrame(void)
             gDemo.Close();
         sndFadeSong(4000);
         seqKillAll();
+        AddLevelTimes(gLevelTime, gGameOptions.nEpisode, currentLevel);
         if (gGameOptions.uGameFlags&kGameFlagEnding)
         {
+            AddLevelTimes(gEpTime, gGameOptions.nEpisode, 999);
+            ShowLevelTimes();
+            currentEpLevel = 0;
             if (gGameOptions.nGameType == kGameTypeSinglePlayer)
             {
                 if (gGameOptions.uGameFlags&kGameFlagPlayOutro)
@@ -1138,15 +1299,32 @@ void ProcessFrame(void)
                 gGameMenuMgr.Deactivate();
                 gGameMenuMgr.Push(&menuCredits,-1);
             }
-            gGameOptions.uGameFlags &= ~(kGameFlagContinuing|kGameFlagEnding);
-            gRestartGame = 1;
-            gQuitGame = 1;
+            if (gGameOptions.nGameType != kGameTypeSinglePlayer)
+            {
+                endMultiEpisode = true;
+                gEndGameMgr.Setup();
+                viewResizeView(gViewSize);
+            }
+            else
+            {
+                gGameOptions.uGameFlags &= ~(kGameFlagContinuing | kGameFlagEnding);
+                gRestartGame = 1;
+                gQuitGame = 1;
+            }
         }
         else
         {
             gEndGameMgr.Setup();
             viewResizeView(gViewSize);
         }
+    }
+    else
+    {
+        gLevelTime++;
+        gRunTime++;
+        gEpTime++;
+        gFrame++;
+        gFrameClock += kTicsPerFrame;
     }
 }
 
