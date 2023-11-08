@@ -39,8 +39,8 @@ int gFrame;
 int gFrameRate;
 int gGamma;
 
-char *gVersionString;
-char gVersionStringBuf[16];
+char gVersionString[16];
+int gVersionPal;
 
 Resource gSysRes;
 
@@ -59,7 +59,7 @@ void _ThrowError(const char *pzFormat, ...)
     va_list args;
     va_start(args, pzFormat);
     vsprintf(buffer, pzFormat, args);
-    initprintf("%s(%i): %s\n", _module, _line, buffer);
+    LOG_F(ERROR, "%s(%i): %s", _module, _line, buffer);
 
 #ifdef WM_MSGBOX_WINDOW
     char titlebuf[256];
@@ -84,7 +84,7 @@ void _consoleSysMsg(const char* pzFormat, ...) {
 
 void __dassert(const char * pzExpr, const char * pzFile, int nLine)
 {
-    initprintf("Assertion failed: %s in file %s at line %i\n", pzExpr, pzFile, nLine);
+    LOG_F(ERROR, "Assertion failed: %s in file %s at line %i", pzExpr, pzFile, nLine);
 
 #ifdef WM_MSGBOX_WINDOW
     char titlebuf[256];
@@ -96,14 +96,18 @@ void __dassert(const char * pzExpr, const char * pzFile, int nLine)
     exit(0);
 }
 
-const char *GetVersionString(void)
+void InitVersionString(void)
 {
-    if (!gVersionString)
+    Bstrncpyz(gVersionString, s_buildRev, sizeof(gVersionString));
+
+    char * const pHyphen = strchr(gVersionString, '-');
+    if (pHyphen != nullptr)
+        pHyphen[0] = '\0';
+
+    char * const pBracket = strchr(gVersionString, '[');
+    if (pBracket != nullptr)
     {
-        gVersionString = gVersionStringBuf;
-        if (!gVersionString)
-            return NULL;
-        sprintf(gVersionString, "%d.%02d", EXEVERSION / 100, EXEVERSION % 100);
+        pBracket[0] = '\0';
+        gVersionPal = 9;
     }
-    return gVersionString;
 }

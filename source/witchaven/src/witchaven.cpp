@@ -1493,6 +1493,20 @@ int app_main(int argc, char const* const* argv)
 
     G_ExtPreInit(argc, argv);
 
+#ifdef __APPLE__
+    if (!g_useCwd)
+    {
+        char cwd[BMAX_PATH];
+        char *homedir = Bgethomedir();
+        if (homedir)
+            Bsnprintf(cwd, sizeof(cwd), "%s/Library/Logs/" APPBASENAME ".log", homedir);
+        else
+            Bstrcpy(cwd, APPBASENAME ".log");
+        OSD_SetLogFile(cwd);
+        Xfree(homedir);
+    }
+    else
+#endif
     OSD_SetLogFile(APPBASENAME ".log");
 
     OSD_SetFunctions(NULL,
@@ -1538,8 +1552,8 @@ int app_main(int argc, char const* const* argv)
     if (enginePreInit())
     {
         wm_msgbox("Build Engine Initialization Error",
-            "There was a problem initializing the Build engine: %s", engineerrstr);
-        ERRprintf("app_main: There was a problem initializing the Build engine: %s\n", engineerrstr);
+            "There was a problem initializing the engine: %s", engineerrstr);
+        LOG_F(ERROR, "app_main: There was a problem initializing the engine: %s", engineerrstr);
         Bexit(2);
     }
 
@@ -1586,14 +1600,17 @@ int app_main(int argc, char const* const* argv)
 
     Xfree(setupFileName);
 */
-    OSD_Exec("ewitchaven_cvars.cfg");
-    OSD_Exec("ewitchaven_autoexec.cfg");
+    OSD_Exec(APPBASENAME "_cvars.cfg");
+    OSD_Exec(APPBASENAME "_autoexec.cfg");
 
     CONFIG_SetDefaultKeys(keydefaults, true);
 
     system_getcvars();
 
     InstallEngine();
+
+    if (!g_useCwd)
+        G_CleanupSearchPaths();
 
     const char* defsfile = G_DefFile();
     uint32_t stime = timerGetTicks();
@@ -2292,7 +2309,7 @@ void InstallEngine()
             "There was a problem initializing the engine: %s\n\nThe application will now close.", engineerrstr);
         //TODO:
         //G_Cleanup();
-        ERRprintf("G_Startup: There was a problem initializing the engine: %s\n", engineerrstr);
+        LOG_F(ERROR, "G_Startup: There was a problem initializing the engine: %s", engineerrstr);
         exit(6);
     }
     if (videoSetGameMode(gSetup.fullscreen, gSetup.xdim, gSetup.ydim, gSetup.bpp, 0) < 0)

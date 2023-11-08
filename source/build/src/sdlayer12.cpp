@@ -186,7 +186,7 @@ static inline char grabmouse_low(char a)
 void videoGetModes(int display)
 {
     UNREFERENCED_PARAMETER(display);
-    
+
     int32_t i, maxx = 0, maxy = 0;
     int32_t j;
     static int32_t cdepths[] = { 8,
@@ -301,11 +301,13 @@ int32_t videoSetMode(int32_t x, int32_t y, int32_t c, int32_t fs)
     VLOG_F(LOG_GFX, "Setting video mode %dx%d (%d-bpp %s).", x, y, c, ((fs & 1) ? "fullscreen" : "windowed"));
 
     // restore gamma before we change video modes if it was changed
-    if (sdl_surface && gammabrightness)
+    if (nogl && sdl_surface && gammabrightness)
     {
         SDL_SetGammaRamp(sysgamma[0], sysgamma[1], sysgamma[2]);
         gammabrightness = 0;  // redetect on next mode switch
     }
+    else if (sdl_surface)
+        return setvideomode_sdlcommonpost(x, y, c, fs, regrab);
 
     // deinit
     destroy_window_resources();

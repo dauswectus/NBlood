@@ -21,7 +21,6 @@ static void *g_vm_data;
 // The tile file number (tilesXXX <- this) of each tile:
 // 0 <= . < MAXARTFILES_BASE: tile is in a "base" ART file
 // MAXARTFILES_BASE <= . < MAXARTFILES_TOTAL: tile is in a map-specific ART file
-uint8_t tilefilenum[MAXTILES];
 EDUKE32_STATIC_ASSERT(MAXARTFILES_TOTAL <= 256);
 
 static int32_t tilefileoffs[MAXTILES];
@@ -403,7 +402,7 @@ void artReadManifest(buildvfs_kfd const fil, artheader_t * const local)
     kread(fil, tilesizx, local->numtiles*sizeof(int16_t));
     kread(fil, tilesizy, local->numtiles*sizeof(int16_t));
 
-    local->tileread = (uint8_t*)Xcalloc(1, (local->numtiles + 7) >> 3);
+    local->tileread = (uint8_t*)Xcalloc(1, bitmap_size(local->numtiles));
 
     for (bssize_t i=local->tilestart; i<=local->tileend; i++)
     {
@@ -422,7 +421,7 @@ void artReadManifest(buildvfs_kfd const fil, artheader_t * const local)
         tilesiz[i].y = tiley;
 
         bitmap_set(local->tileread, localIndex);
-        
+
         picanmdisk = B_LITTLE32(picanmdisk);
         tileConvertAnimFormat(i, picanmdisk);
     }
@@ -698,7 +697,7 @@ void tileLoadData(int16_t tilenume, int32_t dasiz, char *buffer)
         if (!waloff[owner])
             tileLoad(owner);
 
-        if (waloff[tilenume])
+        if (waloff[owner] && waloff[tilenume])
             tileMaybeRotate(tilenume);
 
         return;

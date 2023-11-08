@@ -99,7 +99,7 @@ enum rendmode_t {
 #define MAXPLAYERS 16
 // Maximum number of component tiles in a multi-psky:
 #define MAXPSKYTILES 16
-#define MAXSPRITESONSCREEN 2560
+#define MAXSPRITESONSCREEN 4096
 #define MAXUNIQHUDID 256 //Extra slots so HUD models can store animation state without messing game sprites
 
 #define TSPR_TEMP 99
@@ -158,6 +158,7 @@ enum rendmode_t {
 # endif
 
 int32_t get_alwaysshowgray(void);  // editor only
+int32_t get_skipgraysectors(void);
 void yax_updategrays(int32_t posze);
 
 #ifdef YAX_ENABLE
@@ -212,8 +213,8 @@ static FORCE_INLINE CONSTEXPR int32_t yax_waltosecmask(int32_t const walclipmask
 void yax_preparedrawrooms(void);
 void yax_drawrooms(void (*SpriteAnimFunc)(int32_t,int32_t,int32_t,int32_t,int32_t),
                    int16_t sectnum, int32_t didmirror, int32_t smoothr);
-# define YAX_SKIPSECTOR(i) if (graysectbitmap[(i)>>3]&pow2char[(i)&7]) continue
-# define YAX_SKIPWALL(i) if (graywallbitmap[(i)>>3]&pow2char[(i)&7]) continue
+# define YAX_SKIPSECTOR(i) if (bitmap_test(graysectbitmap, (i))) continue
+# define YAX_SKIPWALL(i) if (bitmap_test(graywallbitmap, (i))) continue
 #else
 # define yax_preparedrawrooms()
 # define yax_drawrooms(SpriteAnimFunc, sectnum, didmirror, smoothr)
@@ -250,9 +251,12 @@ enum {
     ROTATESPRITE_FULL16 = 2048,
     RS_LERP = 4096,
     RS_FORCELERP = 8192,
+    RS_NOPOSLERP = 16384,
+    RS_NOZOOMLERP = 32768,
+    RS_NOANGLERP = 65536,
 
     // ROTATESPRITE_MAX-1 is the mask of all externally available orientation bits
-    ROTATESPRITE_MAX = 16384,
+    ROTATESPRITE_MAX = 131072,
 
     RS_CENTERORIGIN = (1<<30),
 };
@@ -322,15 +326,6 @@ static FORCE_INLINE void sprite_tracker_hook__(intptr_t address);
 //  Win64: http://msdn.microsoft.com/en-us/library/9dbwhz68.aspx
 //
 //  x86: http://en.wikipedia.org/wiki/Data_structure_alignment#Typical_alignment_of_C_structs_on_x86
-
-enum {
-    SPR_XFLIP = 4,
-    SPR_YFLIP = 8,
-
-    SPR_WALL = 16,
-    SPR_FLOOR = 32,
-    SPR_ALIGN_MASK = 32+16,
-};
 
 #define UNTRACKED_STRUCTS__
 #include "buildtypes.h"
@@ -540,7 +535,7 @@ typedef struct {
         uint64_t ptrfill;
 #endif
     };
-    
+
     float    alpha;
     uint16_t flags;
 
@@ -593,7 +588,8 @@ enum
     TSPR_FLAGS_DRAW_LAST = 1u<<1u,
     TSPR_FLAGS_NO_SHADOW = 1u<<2u,
     TSPR_FLAGS_INVISIBLE_WITH_SHADOW = 1u<<3u,
-    TSPR_FLAGS_SLOPE_SPRITE = 1u<<4u,
+    TSPR_FLAGS_SLAB = 1u<<4u,
+    TSPR_FLAGS_NO_GLOW = 1u<<5u,
 };
 
 EXTERN int32_t guniqhudid;
@@ -611,6 +607,7 @@ extern usermaphack_t g_loadedMapHack;
 extern int compare_usermaphacks(const void *, const void *);
 extern usermaphack_t *usermaphacks;
 extern int32_t num_usermaphacks;
+extern usermaphack_t *find_usermaphack();
 
 #if !defined DEBUG_MAIN_ARRAYS
 EXTERN spriteext_t *spriteext;
@@ -725,13 +722,6 @@ static inline tspriteptr_t renderMakeTSpriteFromSprite(tspriteptr_t const tspr, 
     tspr->clipdist = 0;
     tspr->owner = spritenum;
 
-    if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT_MASK) == CSTAT_SPRITE_ALIGNMENT_SLOPE)
-    {
-        tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT_MASK;
-        tspr->cstat |= CSTAT_SPRITE_ALIGNMENT_FLOOR;
-        tspr->clipdist |= TSPR_FLAGS_SLOPE_SPRITE;
-    }
-
     return tspr;
 }
 
@@ -743,8 +733,8 @@ static inline tspriteptr_t renderAddTSpriteFromSprite(uint16_t const spritenum)
 static inline void spriteSetSlope(uint16_t const spritenum, int16_t const heinum)
 {
     auto const spr = &sprite[spritenum];
-    uint16_t const cstat = spr->cstat & CSTAT_SPRITE_ALIGNMENT_MASK;
-    if (cstat != CSTAT_SPRITE_ALIGNMENT_FLOOR && cstat != CSTAT_SPRITE_ALIGNMENT_SLOPE)
+    uint16_t const cstat = spr->cstat;
+    if (!(cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR))
         return;
 
     spr->xoffset = heinum & 255;
@@ -755,7 +745,7 @@ static inline void spriteSetSlope(uint16_t const spritenum, int16_t const heinum
 
 static inline int16_t spriteGetSlope(uint16_t const spritenum)
 {
-    auto const spr = &sprite[spritenum];
+    auto const spr = (uspriteptr_t)&sprite[spritenum];
     uint16_t const cstat = spr->cstat & CSTAT_SPRITE_ALIGNMENT_MASK;
     if (cstat != CSTAT_SPRITE_ALIGNMENT_SLOPE)
         return 0;
@@ -993,15 +983,15 @@ EXTERN bool g_windowPosValid;
     //bit-mapped.
     //If you want draw2dscreen() to show sprite #54 then you say:
     //   spritenum = 54;
-    //   show2dsprite[spritenum>>3] |= (1<<(spritenum&7));
+    //   bitmap_set(show2dsprite, spritenum);
     //And if you want draw2dscreen() to not show sprite #54 then you say:
     //   spritenum = 54;
-    //   show2dsprite[spritenum>>3] &= ~(1<<(spritenum&7));
+    //   bitmap_clear(show2dsprite, spritenum);
 
 EXTERN int automapping;
-EXTERN char show2dsector[(MAXSECTORS+7)>>3];
-EXTERN char show2dwall[(MAXWALLS+7)>>3];
-EXTERN char show2dsprite[(MAXSPRITES+7)>>3];
+EXTERN char show2dsector[bitmap_size(MAXSECTORS)];
+EXTERN char show2dwall[bitmap_size(MAXWALLS)];
+EXTERN char show2dsprite[bitmap_size(MAXSPRITES)];
 
 struct classicht_t
 {
@@ -1020,20 +1010,22 @@ EXTERN classicht_t classicht[MAXTILES];
 # define GOTPIC_USED
 #endif
 
-EXTERN char GOTPIC_USED gotpic[(MAXTILES+7)>>3];
-EXTERN char gotsector[(MAXSECTORS+7)>>3];
+EXTERN char GOTPIC_USED gotpic[bitmap_size(MAXTILES)];
+EXTERN char gotsector[bitmap_size(MAXSECTORS)];
 
 EXTERN char editorcolors[256];
 EXTERN char editorcolorsdef[256];
 
-EXTERN char faketile[(MAXTILES+7)>>3];
+EXTERN char faketile[bitmap_size(MAXTILES)];
 EXTERN char *faketiledata[MAXTILES];
 EXTERN int faketilesize[MAXTILES];
+
+EXTERN uint8_t tilefilenum[MAXTILES];
 
 EXTERN char spritecol2d[MAXTILES][2];
 EXTERN uint8_t tilecols[MAXTILES];
 
-EXTERN char editwall[(MAXWALLS+7)>>3];
+EXTERN char editwall[bitmap_size(MAXWALLS)];
 
 extern uint8_t vgapal16[4*256];
 
@@ -1056,7 +1048,11 @@ extern char g_haveVoxels;
 
 enum
 {
-    VF_NOTRANS = 1,
+    VF_NOTRANS = 1<<0,
+    // begin downstream
+    VF_ROTATE  = 1<<6,
+    VF_RESERVE = 1<<7,
+    // end downstream
 };
 
 extern int32_t usehightile;
@@ -1567,7 +1563,7 @@ void tileInvalidate(int16_t tilenume, int32_t pal, int32_t how);
 
 void polymostSet2dView(void);   // sets up GL for 2D drawing
 
-int32_t polymost_drawtilescreen(int32_t tilex, int32_t tiley, int32_t wallnum, int32_t dimen, int32_t tilezoom,
+int32_t polymost_drawtilescreen(int32_t tilex, int32_t tiley, int32_t tilenum, int32_t dimen, int32_t tilezoom,
                                 int32_t usehitile, uint8_t *loadedhitile);
 void polymost_glreset(void);
 void polymost_precache(int32_t dapicnum, int32_t dapalnum, int32_t datype);
@@ -1622,8 +1618,6 @@ extern GrowArray<char *> g_clipMapFiles;
 
 EXTERN int32_t nextvoxid;
 EXTERN intptr_t voxoff[MAXVOXELS][MAXVOXMIPS]; // used in KenBuild
-EXTERN int8_t voxreserve[(MAXVOXELS+7)>>3];
-EXTERN int8_t voxrotate[(MAXVOXELS+7)>>3];
 
 #ifdef USE_OPENGL
 // TODO: dynamically allocate this
@@ -1642,7 +1636,7 @@ typedef struct
     char        pal;
 } tile2model_t;
 
-# define EXTRATILES (MAXTILES/8)
+#define EXTRATILES ((INT16_MAX-255)-MAXTILES)
 
 EXTERN int32_t mdinited;
 EXTERN tile2model_t tile2model[MAXTILES+EXTRATILES];
@@ -1828,20 +1822,20 @@ extern void(*PolymostProcessVoxels_Callback)(void);
 
 static inline int16_t tspriteGetSlope(tspriteptr_t const tspr)
 {
-    if (!(tspr->clipdist & TSPR_FLAGS_SLOPE_SPRITE))
+    if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT) != CSTAT_SPRITE_ALIGNMENT_SLOPE)
         return 0;
     return uint8_t(tspr->xoffset) + (uint8_t(tspr->yoffset) << 8);
 }
 
-static inline int32_t spriteGetZOfSlope(uint16_t const spritenum, int32_t dax, int32_t day)
+static inline int32_t spriteGetZOfSlope(uint16_t const spritenum, vec2_t pos)
 {
-    auto const spr = &sprite[spritenum];
+    auto const spr = (uspriteptr_t)&sprite[spritenum];
     int16_t const heinum = spriteGetSlope(spritenum);
     if (heinum == 0)
         return spr->z;
 
-    int const j = dmulscale4(sintable[(spr->ang+1024)&2047], day-spr->y,
-                            -sintable[(spr->ang+512)&2047], dax-spr->x);
+    int const j = dmulscale4(sintable[(spr->ang+1024)&2047], pos.y-spr->y,
+                            -sintable[(spr->ang+512)&2047], pos.x-spr->x);
     return spr->z + mulscale18(heinum,j);
 }
 

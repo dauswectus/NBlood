@@ -2462,10 +2462,10 @@ void actInit(bool bSaveLoad) {
 
     #ifdef NOONE_EXTENSIONS
     if (!gModernMap) {
-        initprintf("> This map *does not* provide modern features.\n");
+        LOG_F(INFO, "> This map *does not* provide modern features.");
         nnExtResetGlobals();
     } else {
-        initprintf("> This map provides modern features.\n");
+        LOG_F(INFO, "> This map provides modern features.");
         nnExtInitModernStuff(bSaveLoad);
     }
     #endif
@@ -2689,7 +2689,7 @@ int actFloorBounceVector(int *x, int *y, int *z, int nSector, int a5)
 
 void actRadiusDamage(int nSprite, int x, int y, int z, int nSector, int nDist, int baseDmg, int distDmg, DAMAGE_TYPE dmgType, int flags, int burn)
 {
-    char sectmap[(kMaxSectors+7)>>3];
+    char sectmap[bitmap_size(kMaxSectors)];
     int nOwner = actSpriteIdToOwnerId(nSprite);
     gAffectedSectors[0] = 0;
     gAffectedXWalls[0] = 0;
@@ -3922,7 +3922,7 @@ void actTouchFloor(spritetype *pSprite, int nSector)
             nDamage = 1000;
         actDamageSprite(pSprite->index, pSprite, nDamageType, scale(4, nDamage, 120) << 4);
     }
-    if (tileGetSurfType(nSector + 0x4000) == kSurfLava)
+    if (tileGetSurfType(nSector, 0x4000) == kSurfLava)
     {
         actDamageSprite(pSprite->index, pSprite, kDamageBurn, 16);
         sfxPlay3DSound(pSprite, 352, 5, 2);
@@ -5392,9 +5392,10 @@ void actProcessSprites(void)
 
                             switch (pSprite->type) {
                                 case kThingDroppedLifeLeech:
-                                    if (!Chance(0x4000) && nNextSprite >= 0) continue;
-                                    if (pSprite2->cstat & CLIPMASK0) pXSprite->target = pSprite2->index;
-                                    else continue;
+                                    if ((Chance(0x4000) || nNextSprite < 0) && (pSprite2->cstat & CLIPMASK0))
+                                        pXSprite->target = pSprite2->index;
+                                    else
+                                        continue;
                                     break;
                                 #ifdef NOONE_EXTENSIONS
                                 case kModernThingTNTProx:
@@ -5552,7 +5553,7 @@ void actProcessSprites(void)
     }
     for (nSprite = headspritestat[kStatExplosion]; nSprite >= 0; nSprite = nextspritestat[nSprite])
     {
-        char sectmap[(kMaxSectors+7)>>3];
+        char sectmap[bitmap_size(kMaxSectors)];
         spritetype *pSprite = &sprite[nSprite];
 
         if (pSprite->flags & 32)

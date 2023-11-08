@@ -59,8 +59,6 @@ struct ud_setup_t {
     int32_t noautoload = 0;
 };
 
-extern "C" {
-
 extern ud_setup_t ud_setup;
 #endif
 
@@ -87,24 +85,11 @@ extern int32_t MidiPort; // Midi Port
 extern int32_t ReverseStereo; // Reverse Stereo Channels
 
 // comm externs
-extern int32_t ComPort;
-extern int32_t IrqNumber;
-extern int32_t UartAddress;
-extern int32_t PortSpeed;
-
-extern int32_t ToneDial;
-extern char  ModemName[MAXMODEMSTRING];
-extern char  InitString[MAXMODEMSTRING];
-extern char  HangupString[MAXMODEMSTRING];
-extern char  DialoutString[MAXMODEMSTRING];
 extern int32_t SocketNumber;
 extern char  CommbatMacro[MAXMACROS][MAXMACROLENGTH];
-extern char  PhoneNames[MAXPHONEENTRIES][PHONENAMELENGTH];
-extern char  PhoneNumbers[MAXPHONEENTRIES][PHONENUMBERLENGTH];
-extern char  PhoneNumber[PHONENUMBERLENGTH];
 extern int32_t NumberPlayers;
 extern int32_t ConnectType;
-extern char  PlayerName[MAXPLAYERNAMELENGTH];
+extern char  CommPlayerName[MAXPLAYERNAMELENGTH];
 extern char  RTSName[MAXRTSNAMELENGTH];
 extern char  UserLevel[MAXUSERLEVELNAMELENGTH];
 extern char  RTSPath[MAXRTSPATHLENGTH];
@@ -155,7 +140,4 @@ int32_t CONFIG_FunctionNameToNum(const char *func);
 const char *CONFIG_AnalogNumToName(int32_t func);
 int32_t CONFIG_AnalogNameToNum(const char *func);
 
-#ifdef __cplusplus
-};
-#endif
 #endif

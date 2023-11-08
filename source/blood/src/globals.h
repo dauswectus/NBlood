@@ -46,4 +46,7 @@ extern int gGamma;
 extern bool bVanilla;
 
 extern Resource gSysRes;
-const char *GetVersionString(void);
+
+void InitVersionString(void);
+extern char gVersionString[16];
+extern int gVersionPal;

@@ -30,7 +30,7 @@ static playbackstatus MV_GetNextXMPBlock(VoiceNode *voice)
     }
 
     auto ctx = ((xmp_data *)voice->rawdataptr)->ctx;
-    
+
     if (xmp_play_frame(ctx) != 0)
     {
 #if 0
@@ -118,7 +118,7 @@ int MV_PlayXMP(char *ptr, uint32_t length, int loopstart, int loopend, int pitch
     xd->length = length;
 
     voice->task = async::spawn([voice]() -> int
-    {    
+    {
         auto xd = (xmp_data *)voice->rawdataptr;
         auto ctx = xd->ctx;
 
@@ -177,14 +177,14 @@ void MV_ReleaseXMPVoice(VoiceNode * voice)
     ALIGNED_FREE_AND_NULL(xd);
 }
 
-void MV_SetXMPInterpolation(void)
+void MV_SetXMPInterpolation(int interp)
 {
     if (!MV_Installed)
         return;
 
     for (VoiceNode *voice = VoiceList.next; voice != &VoiceList; voice = voice->next)
         if (voice->wavetype == FMT_XMP)
-            xmp_set_player(((xmp_data *)voice->rawdataptr)->ctx, XMP_PLAYER_INTERP, MV_XMPInterpolation);
+            xmp_set_player(((xmp_data *)voice->rawdataptr)->ctx, XMP_PLAYER_INTERP, interp);
 }
 
 #else

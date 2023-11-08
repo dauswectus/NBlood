@@ -349,7 +349,7 @@ JS_InitMirrors(void)
             {
                 if (mirrorcnt >= MAXMIRRORS)
                 {
-                    buildprintf("MAXMIRRORS reached! Skipping mirror wall[%d]\n", i);
+                    LOG_F(WARNING, "MAXMIRRORS reached! Skipping mirror wall[%d]", i);
                     wall[i].overpicnum = sector[s].ceilingpicnum;
                     continue;
                 }
@@ -402,8 +402,8 @@ JS_InitMirrors(void)
 
                     if (!Found_Cam)
                     {
-                        buildprintf("Could not find the camera view sprite for match %d\n",TrackerCast(wall[i].hitag));
-                        buildprintf("Map Coordinates: x = %d, y = %d\n",TrackerCast(wall[i].x),TrackerCast(wall[i].y));
+                        LOG_F(WARNING, "Could not find the camera view sprite for match %d (Map Coordinates: x = %d, y = %d)",
+                                       TrackerCast(wall[i].hitag), TrackerCast(wall[i].x), TrackerCast(wall[i].y));
                         break;
                     }
 
@@ -430,9 +430,8 @@ JS_InitMirrors(void)
 
                         if (!Found_Cam)
                         {
-                            buildprintf("Did not find drawtotile for camera number %d\n",mirrorcnt);
-                            buildprintf("wall[%d].hitag == %d\n",i,TrackerCast(wall[i].hitag));
-                            buildprintf("Map Coordinates: x = %d, y = %d\n", TrackerCast(wall[i].x), TrackerCast(wall[i].y));
+                            LOG_F(WARNING, "Did not find drawtotile for camera number %d (wall[%d].hitag == %d, Map Coordinates: x = %d, y = %d)",
+                                            mirrorcnt, i, TrackerCast(wall[i].hitag), TrackerCast(wall[i].x), TrackerCast(wall[i].y));
                             RESET_BOOL1(&sprite[mirror[mirrorcnt].camera]);
                         }
                     }
@@ -647,7 +646,6 @@ JS_DrawMirrors(PLAYERp pp, int tx, int ty, int tz, fix16_t tpq16ang, fix16_t tpq
     int j, cnt;
     int dist;
     int tposx, tposy; // Camera
-    int *longptr;
     fix16_t tang;
 
 //    long tx, ty, tz, tpang;             // Interpolate so mirror doesn't
@@ -663,29 +661,32 @@ JS_DrawMirrors(PLAYERp pp, int tx, int ty, int tz, fix16_t tpq16ang, fix16_t tpq
             camplayerview = 1;
     }
 
-    // WARNING!  Assuming (MIRRORLABEL&31) = 0 and MAXMIRRORS = 64 <-- JBF: wrong
-    longptr = (int *)&gotpic[MIRRORLABEL >> 3];
-    if (longptr && (longptr[0] || longptr[1]))
+    EDUKE32_STATIC_ASSERT((MIRRORLABEL & 7) == 0);
+    EDUKE32_STATIC_ASSERT(MAXMIRRORS == 8);
+    auto const gotpicptr = (uint8_t const *)&gotpic[MIRRORLABEL>>3];
+    auto const gotmirrors = gotpicptr[0];
+
+    if (gotmirrors)
     {
         uint32_t oscilation_delta = ototalclock - oscilationclock;
         oscilation_delta -= oscilation_delta % 4;
         oscilationclock += oscilation_delta;
         oscilation_delta *= 2;
         for (cnt = MAXMIRRORS - 1; cnt >= 0; cnt--)
-            //if (TEST_GOTPIC(cnt + MIRRORLABEL) || TEST_GOTPIC(cnt + CAMSPRITE))
-            if (TEST_GOTPIC(cnt + MIRRORLABEL) || ((unsigned)mirror[cnt].campic < MAXTILES && TEST_GOTPIC(mirror[cnt].campic)))
+            //if (bitmap_test(gotpic, cnt + MIRRORLABEL) || bitmap_test(gotpic, cnt + CAMSPRITE))
+            if (bitmap_test(gotpic, cnt + MIRRORLABEL) || ((unsigned)mirror[cnt].campic < MAXTILES && bitmap_test(gotpic, mirror[cnt].campic)))
             {
                 bIsWallMirror = FALSE;
-                if (TEST_GOTPIC(cnt + MIRRORLABEL))
+                if (bitmap_test(gotpic, cnt + MIRRORLABEL))
                 {
                     bIsWallMirror = TRUE;
-                    RESET_GOTPIC(cnt + MIRRORLABEL);
+                    bitmap_clear(gotpic, cnt + MIRRORLABEL);
                 }
-                //else if (TEST_GOTPIC(cnt + CAMSPRITE))
-                else if ((unsigned)mirror[cnt].campic < MAXTILES && TEST_GOTPIC(mirror[cnt].campic))
+                //else if (bitmap_test(gotpic, cnt + CAMSPRITE))
+                else if ((unsigned)mirror[cnt].campic < MAXTILES && bitmap_test(gotpic, mirror[cnt].campic))
                 {
-                    //RESET_GOTPIC(cnt + CAMSPRITE);
-                    RESET_GOTPIC(mirror[cnt].campic);
+                    //bitmap_clear(gotpic, cnt + CAMSPRITE);
+                    bitmap_clear(gotpic, mirror[cnt].campic);
                 }
 
                 mirrorinview = TRUE;
@@ -799,8 +800,7 @@ JS_DrawMirrors(PLAYERp pp, int tx, int ty, int tz, fix16_t tpq16ang, fix16_t tpq
                         if (mirror[cnt].campic == -1)
                         {
                             TerminateGame();
-                            buildprintf("Missing campic for mirror %d\n",cnt);
-                            buildprintf("Map Coordinates: x = %d, y = %d\n",midx,midy);
+                            LOG_F(ERROR, "Missing campic for mirror %d (Map Coordinates: x = %d, y = %d)", cnt, midx, midy);
                             exit(0);
                         }
 
@@ -1083,7 +1083,8 @@ JAnalyzeSprites(tspriteptr_t tspr)
         {
             // Turn on voxels
             tspr->picnum = aVoxelArray[tspr->picnum].Voxel;     // Get the voxel number
-            tspr->cstat |= 48;          // Set stat to voxelize sprite
+            tspr->clipdist |= TSPR_FLAGS_SLAB;                  // Set stat to voxelize sprite
+            tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT;
         }
     }
     else
@@ -1093,7 +1094,7 @@ JAnalyzeSprites(tspriteptr_t tspr)
         case 764: // Gun barrel
             if (!usevoxels || videoGetRenderMode() == REND_POLYMER || (spriteext[tspr->owner].flags&SPREXT_NOTMD))
             {
-                tspr->cstat |= 16;
+                tspr->cstat |= CSTAT_SPRITE_ALIGNMENT_WALL;
                 break;
             }
 
@@ -1101,7 +1102,8 @@ JAnalyzeSprites(tspriteptr_t tspr)
             {
                 // Turn on voxels
                 tspr->picnum = aVoxelArray[tspr->picnum].Voxel;     // Get the voxel number
-                tspr->cstat |= 48;          // Set stat to voxelize sprite
+                tspr->clipdist |= TSPR_FLAGS_SLAB;         // Set stat to voxelize sprite
+                tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT;
             }
             break;
         }

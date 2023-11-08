@@ -29,6 +29,7 @@ Prepared for public release: 03/28/2005 - Charlie Wiederhold, 3D Realms
 
 #include "keys.h"
 #include "game.h"
+#include "config.h"
 #include "tags.h"
 #include "names2.h"
 #include "network.h"
@@ -65,7 +66,6 @@ SYNC BUG NOTES:
 static uint8_t tempbuf[576], packbuf[576];
 int PlayClock;
 extern SWBOOL PauseKeySet;
-extern char CommPlayerName[32];
 
 gNET gNet;
 extern short PlayerQuitMenuLevel;
@@ -73,7 +73,7 @@ extern SWBOOL QuitFlag;
 
 //#define NET_DEBUG_MSGS
 
-#define TIMERUPDATESIZ 32
+#define TIMERUPDATESIZ 32u
 
 //SW_PACKET fsync;
 
@@ -87,11 +87,12 @@ SWBOOL ready2send = 0;
 
 SWBOOL CommEnabled = FALSE;
 uint8_t CommPlayers = 0;
-int movefifoplc, movefifosendplc; //, movefifoend[MAX_SW_PLAYERS];
+unsigned int movefifoplc, movefifosendplc; //, movefifoend[MAX_SW_PLAYERS];
 unsigned int MoveThingsCount;
 
 //int myminlag[MAX_SW_PLAYERS];
-int mymaxlag, otherminlag, bufferjitter = 1;
+int mymaxlag, otherminlag;
+unsigned int bufferjitter = 1;
 extern char sync_first[MAXSYNCBYTES][60];
 extern int sync_found;
 
@@ -140,7 +141,7 @@ void netsendpacket(int ind, uint8_t* buf, int len)
     {
         if ((unsigned)len > sizeof(packbuf))
         {
-            buildprintf("netsendpacket(): packet length > %d!\n",(int)sizeof(packbuf));
+            LOG_F(WARNING, "netsendpacket(): packet length > %d!", (int)sizeof(packbuf));
             len = sizeof(packbuf);
         }
 
@@ -181,7 +182,7 @@ void netbroadcastpacket(uint8_t* buf, int len)
     {
         if ((unsigned)len > sizeof(packbuf))
         {
-            buildprintf("netbroadcastpacket(): packet length > %d!\n",(int)sizeof(packbuf));
+            LOG_F(WARNING, "netbroadcastpacket(): packet length > %d!", (int)sizeof(packbuf));
             len = sizeof(packbuf);
         }
 
@@ -307,7 +308,7 @@ int netgetpacket(int *ind, uint8_t* buf)
     }
     else
     {
-        buildprintf("netgetpacket(): Got a proxy message from %d instead of %d\n",*ind,connecthead);
+        LOG_F(ERROR, "netgetpacket(): Got a proxy message from %d instead of %d", *ind, connecthead);
     }
     return 0;
 }
@@ -580,8 +581,8 @@ CheckVersion(int GameVersion)
         {
             if (GameVersion != Player[pnum].PlayerVersion)
             {
-                buildprintf("CheckVersion(): player %d has version %d, expecting %d\n",
-                            pnum, Player[pnum].PlayerVersion, GameVersion);
+                LOG_F(ERROR, "CheckVersion(): player %d has version %d, expecting %d",
+                             pnum, Player[pnum].PlayerVersion, GameVersion);
 
                 adduserquote(VERSION_MSG);
                 adduserquote(VERSION_MSG);
@@ -639,7 +640,7 @@ waitforeverybody(void)
     if (!CommEnabled)
         return;
 
-    buildprintf("waitforeverybody() #%d\n", Player[myconnectindex].playerreadyflag + 1);
+    LOG_F(INFO, "waitforeverybody() #%d", Player[myconnectindex].playerreadyflag + 1);
 
     //tenDbLprintf(gTenLog, 3, "in w4e");
     //tenDbFlushLog(gTenLog);
@@ -972,7 +973,7 @@ void faketimerhandler(void) { ; }
 void
 UpdateInputs(void)
 {
-    int i, j, k;
+    int i, j;
     PLAYERp pp;
     void getinput(SW_PACKET *, SWBOOL);
     extern SWBOOL BotMode;
@@ -1070,7 +1071,7 @@ UpdateInputs(void)
     {
         if (i != myconnectindex)
         {
-            k = (Player[myconnectindex].movefifoend - 1) - Player[i].movefifoend;
+            int k = (Player[myconnectindex].movefifoend - 1) - Player[i].movefifoend;
             Player[i].myminlag = min(Player[i].myminlag, k);
             mymaxlag = max(mymaxlag, k);
         }
@@ -1644,7 +1645,7 @@ getpackets(void)
             break;
 
         case PACKET_TYPE_PROXY:
-            buildputs("getpackets(): nested proxy packets!?\n");
+            LOG_F(ERROR, "getpackets(): nested proxy packets!?");
             break;
 
         default:

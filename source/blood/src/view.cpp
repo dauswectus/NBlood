@@ -123,9 +123,9 @@ VIEW predictFifo[256];
 
 int gInterpolate;
 int nInterpolations;
-char gInterpolateSprite[(kMaxSprites+7)>>3];
-char gInterpolateWall[(kMaxWalls+7)>>3];
-char gInterpolateSector[(kMaxSectors+7)>>3];
+char gInterpolateSprite[bitmap_size(kMaxSprites)];
+char gInterpolateWall[bitmap_size(kMaxWalls)];
+char gInterpolateSector[bitmap_size(kMaxSectors)];
 
 #define kMaxInterpolations 16384
 
@@ -423,7 +423,12 @@ void fakeProcessInput(PLAYER *pPlayer, GINPUT *pInput)
         }
     }
     if (pInput->q16turn)
-        predict.at30 = (predict.at30+pInput->q16turn)&0x7ffffff;
+    {
+        if (bVanilla)
+            predict.at30 = ((predict.at30&0x7ff0000)+(pInput->q16turn&0x7ff0000))&0x7ffffff;
+        else
+            predict.at30 = (predict.at30+pInput->q16turn)&0x7ffffff;
+    }
     if (pInput->keyFlags.spin180)
         if (!predict.at4c)
             predict.at4c = -kAng180;
@@ -944,7 +949,8 @@ void viewCorrectPrediction(void)
     }
     spritetype *pSprite = gMe->pSprite;
     VIEW *pView = &predictFifo[(gNetFifoTail-1)&255];
-    if (gMe->q16ang != pView->at30 || pView->at24 != gMe->q16horiz || pView->at50 != pSprite->x || pView->at54 != pSprite->y || pView->at58 != pSprite->z)
+    const char bCalPrediction = !VanillaMode() || (gMe->q16ang != pView->at30 || pView->at24 != gMe->q16horiz || pView->at50 != pSprite->x || pView->at54 != pSprite->y || pView->at58 != pSprite->z);
+    if (bCalPrediction)
     {
         viewInitializePrediction();
         predictOld = gPrevView[myconnectindex];
@@ -1244,6 +1250,23 @@ struct WEAPONICON {
 };
 
 WEAPONICON gWeaponIcon[] = {
+    { -1, 0 },
+    { -1, 0 }, // 1: pitchfork
+    { 524, 4 }, // 2: flare gun
+    { 559, 7 }, // 3: shotgun
+    { 558, 5 }, // 4: tommy gun
+    { 526, 11 }, // 5: napalm launcher
+    { 589, 7 }, // 6: dynamite
+    { 618, 6 }, // 7: spray can
+    { 539, 11 }, // 8: tesla gun
+    { 800, 0 }, // 9: life leech
+    { 525, 13 }, // 10: voodoo doll
+    { 811, 7 }, // 11: proxy bomb
+    { 810, 7 }, // 12: remote bomb
+    { -1, 0 },
+};
+
+WEAPONICON gWeaponIconVoxel[] = {
     { -1, 0 },
     { -1, 0 }, // 1: pitchfork
     { 524, 6 }, // 2: flare gun
@@ -1561,7 +1584,7 @@ void viewDrawCtfHud(ClockTicks arg)
     bool redFlagTaken = false;
     int blueFlagCarrierColor = 0;
     int redFlagCarrierColor = 0;
-    for (int i = 0, p = connecthead; p >= 0; i++, p = connectpoint2[p])
+    for (int p = connecthead; p >= 0; p = connectpoint2[p])
     {
         if ((gPlayer[p].hasFlag & 1) != 0)
         {
@@ -1791,8 +1814,7 @@ void UpdateStatusBar(ClockTicks arg)
             TileHGauge(2208, 44, 190, pPlayer->armor[2], 3200);
             DrawStatNumber("%3d", pPlayer->armor[2]>>4, 2230, 50, 193, 0, 0);
         }
-        sprintf(gTempStr, "v%s", GetVersionString());
-        viewDrawText(3, gTempStr, 20, 191, 32, 0, 1, 0);
+        viewDrawText(3, gVersionString, 20, 191, 32, gVersionPal, 1, 0);
 
         for (int i = 0; i < 6; i++)
         {
@@ -1887,7 +1909,7 @@ int dword_172CE0[16][3];
 
 void viewInit(void)
 {
-    initprintf("Initializing status bar\n");
+    LOG_F(INFO, "Initializing status bar");
     InitStatusBar();
     FontSet(0, 4096, 0);
     FontSet(1, 4192, 1);
@@ -1926,7 +1948,7 @@ void viewInit(void)
         dword_172CE0[i][1] = mulscale16(wrand(), 2048);
         dword_172CE0[i][2] = mulscale16(wrand(), 2048);
     }
-    gViewMap.sub_25C38(0, 0, gZoom, 0, gFollowMap);
+    gViewMap.Init(0, 0, gZoom, 0, gFollowMap);
 
     g_frameDelay = calcFrameDelay(r_maxfps);
 
@@ -2323,20 +2345,32 @@ tspritetype *viewAddEffect(int nTSprite, VIEW_EFFECT nViewEffect)
         if (!pNSprite)
             break;
         pNSprite->z = getflorzofslope(pTSprite->sectnum, pNSprite->x, pNSprite->y);
-        if ((sector[pNSprite->sectnum].floorpicnum >= 4080) && (sector[pNSprite->sectnum].floorpicnum <= 4095) && !VanillaMode()) // if floor has ror, find actual floor
+        if (!VanillaMode()) // support better floor detection for shadows (detect fake floors/allows ROR traversal)
         {
-            int cX = pNSprite->x, cY = pNSprite->y, cZ = pNSprite->z, cZrel = pNSprite->z, nSectnum = pNSprite->sectnum;
-            for (int i = 0; i < 16; i++) // scan through max stacked sectors
+            int ceilZ, ceilHit, floorZ, floorHit;
+            GetZRangeAtXYZ(pTSprite->x, pTSprite->y, pTSprite->z, pTSprite->sectnum, &ceilZ, &ceilHit, &floorZ, &floorHit, pTSprite->clipdist<<2, CLIPMASK0, PARALLAXCLIP_CEILING|PARALLAXCLIP_FLOOR);
+            if (((floorHit&0xc000) == 0xc000) && spriRangeIsFine(floorHit&0x3fff) && ((sprite[floorHit&0x3fff].cstat & (CSTAT_SPRITE_BLOCK|CSTAT_SPRITE_ALIGNMENT_FLOOR|CSTAT_SPRITE_INVISIBLE)) == (CSTAT_SPRITE_BLOCK|CSTAT_SPRITE_ALIGNMENT_FLOOR))) // if there is a fake floor under us, use fake floor as the shadow position
             {
-                if (!CheckLink(&cX, &cY, &cZ, &nSectnum)) // if no more floors underneath, abort
-                    break;
-                const int newFloorZ = getflorzofslope(nSectnum, cX, cZ);
-                cZrel += newFloorZ - cZ; // get height difference for next sector's ceiling/floor, and add to relative height for shadow
-                if ((sector[nSectnum].floorpicnum < 4080) || (sector[nSectnum].floorpicnum > 4095)) // if current sector is not open air, use as floor for shadow casting, otherwise continue to next sector
-                    break;
-                cZ = newFloorZ;
+                int top, bottom;
+                GetSpriteExtents(&sprite[floorHit&0x3fff], &top, &bottom);
+                pNSprite->z = top;
+                pNSprite->z--; // offset from fake floor so it isn't z-fighting when being rendered
             }
-            pNSprite->z = cZrel;
+            else if ((sector[pNSprite->sectnum].floorpicnum >= 4080) && (sector[pNSprite->sectnum].floorpicnum <= 4095)) // if floor has ror, find actual floor
+            {
+                int cX = pNSprite->x, cY = pNSprite->y, cZ = pNSprite->z, cZrel = pNSprite->z, nSectnum = pNSprite->sectnum;
+                for (int i = 0; i < 16; i++) // scan through max stacked sectors
+                {
+                    if (!CheckLink(&cX, &cY, &cZ, &nSectnum)) // if no more floors underneath, abort
+                        break;
+                    const int newFloorZ = getflorzofslope(nSectnum, cX, cZ);
+                    cZrel += newFloorZ - cZ; // get height difference for next sector's ceiling/floor, and add to relative height for shadow
+                    if ((sector[nSectnum].floorpicnum < 4080) || (sector[nSectnum].floorpicnum > 4095)) // if current sector is not open air, use as floor for shadow casting, otherwise continue to next sector
+                        break;
+                    cZ = newFloorZ;
+                }
+                pNSprite->z = cZrel;
+            }
         }
         pNSprite->shade = 127;
         pNSprite->cstat |= CSTAT_SPRITE_TRANSLUCENT;
@@ -2442,17 +2476,18 @@ tspritetype *viewAddEffect(int nTSprite, VIEW_EFFECT nViewEffect)
         pNSprite->x = pTSprite->x;
         pNSprite->y = pTSprite->y;
         pNSprite->z = pTSprite->z-(32<<8);
-        pNSprite->z -= weaponIcon.zOffset<<8; // offset up
         pNSprite->picnum = nTile;
         pNSprite->shade = pTSprite->shade;
         pNSprite->xrepeat = 32;
         pNSprite->yrepeat = 32;
         pNSprite->ang = (gCameraAng + kAng90) & kAngMask; // always face viewer
+        if (VanillaMode())
+            break;
         const int nVoxel = voxelIndex[nTile];
         if (gShowWeapon == 2 && usevoxels && gDetail >= 4 && videoGetRenderMode() != REND_POLYMER && nVoxel != -1)
         {
-            pNSprite->cstat |= 48;
-            pNSprite->cstat &= ~8;
+            pNSprite->clipdist |= TSPR_FLAGS_SLAB;
+            pNSprite->cstat &= ~(8|CSTAT_SPRITE_ALIGNMENT);
             pNSprite->picnum = nVoxel;
             if (pPlayer->curWeapon == kWeaponLifeLeech) // position lifeleech behind player
             {
@@ -2463,7 +2498,10 @@ tspritetype *viewAddEffect(int nTSprite, VIEW_EFFECT nViewEffect)
                 pNSprite->ang = (gCameraAng + kAng180) & kAngMask;
             else if ((pPlayer->curWeapon == kWeaponProxyTNT) || (pPlayer->curWeapon == kWeaponRemoteTNT)) // make proxy/remote tnt always face viewers like sprite
                 pNSprite->ang = (gCameraAng + kAng180 + kAng45) & kAngMask;
+            pNSprite->z -= gWeaponIconVoxel[pPlayer->curWeapon].zOffset<<8; // offset up
         }
+        else
+            pNSprite->z -= weaponIcon.zOffset<<8; // offset up
         break;
     }
     }
@@ -2492,9 +2530,10 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
     {
         tspritetype *pTSprite = &tsprite[nTSprite];
         //int nXSprite = pTSprite->extra;
-        int nXSprite = sprite[pTSprite->owner].extra;
+        int nSprite = pTSprite->owner;
+        int nXSprite = sprite[nSprite].extra;
         XSPRITE *pTXSprite = NULL;
-        if (qsprite_filler[pTSprite->owner] > gDetail)
+        if ((qsprite_filler[nSprite] > gDetail) || (sprite[nSprite].sectnum == -1))
         {
             pTSprite->xrepeat = 0;
             continue;
@@ -2509,7 +2548,8 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
             continue;
         }
 
-        int nSprite = pTSprite->owner;
+        auto const tsprflags = pTSprite->clipdist;
+
         if (gViewInterpolate && TestBitString(gInterpolateSprite, nSprite) && !(pTSprite->flags&512))
         {
             LOCATION *pPrevLoc = &gPrevSpriteLoc[nSprite];
@@ -2602,8 +2642,8 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
                 {
                     if ((pTSprite->flags&kHitagRespawn) == 0)
                     {
-                        pTSprite->cstat |= 48;
-                        pTSprite->cstat &= ~(4|8);
+                        pTSprite->clipdist |= TSPR_FLAGS_SLAB;
+                        pTSprite->cstat &= ~(4|8|CSTAT_SPRITE_ALIGNMENT);
                         pTSprite->yoffset += picanm[pTSprite->picnum].yofs;
                         pTSprite->picnum = voxelIndex[pTSprite->picnum];
                         if (!voxoff[pTSprite->picnum][0])
@@ -2623,11 +2663,11 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
             nAnim--;
         }
 
-        if ((pTSprite->cstat&48) != 48 && usevoxels && videoGetRenderMode() != REND_POLYMER && !(spriteext[nSprite].flags&SPREXT_NOTMD))
+        if (!(tsprflags & TSPR_FLAGS_SLAB) && usevoxels && videoGetRenderMode() != REND_POLYMER && !(spriteext[nSprite].flags&SPREXT_NOTMD))
         {
             int const nRootTile = pTSprite->picnum;
 #if 0
-            int nAnimTile = pTSprite->picnum + animateoffs_replace(pTSprite->picnum, 32768+pTSprite->owner);
+            int nAnimTile = pTSprite->picnum + animateoffs_replace(pTSprite->picnum, 32768+nSprite);
             if (tiletovox[nAnimTile] != -1)
             {
                 pTSprite->yoffset += picanm[nAnimTile].yofs;
@@ -2637,15 +2677,15 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
 
             int const nVoxel = tiletovox[pTSprite->picnum];
 
-            if (nVoxel != -1 && ((voxrotate[nVoxel>>3]&pow2char[nVoxel&7]) != 0 || (picanm[nRootTile].extra&7) == 7))
+            if (nVoxel != -1 && ((voxflags[nVoxel] & VF_ROTATE) || (picanm[nRootTile].extra&7) == 7))
                 pTSprite->ang = (pTSprite->ang+((int)totalclock<<3))&2047;
         }
 
 #ifdef USE_OPENGL
-        if ((pTSprite->cstat&48) != 48 && usemodels && !(spriteext[nSprite].flags&SPREXT_NOTMD))
+        if (!(tsprflags & TSPR_FLAGS_SLAB) && usemodels && !(spriteext[nSprite].flags&SPREXT_NOTMD))
         {
             int const nRootTile = pTSprite->picnum;
-            int nAnimTile = pTSprite->picnum + animateoffs_replace(pTSprite->picnum, 32768+pTSprite->owner);
+            int nAnimTile = pTSprite->picnum + animateoffs_replace(pTSprite->picnum, 32768+nSprite);
 
             if (usemodels && tile2model[Ptile2tile(nAnimTile, pTSprite->pal)].modelid >= 0 &&
                 tile2model[Ptile2tile(nAnimTile, pTSprite->pal)].framenum >= 0)
@@ -2680,7 +2720,7 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
         }
         nShade += tileShade[pTSprite->picnum];
         pTSprite->shade = ClipRange(nShade, -128, 127);
-        if ((pTSprite->flags&kHitagRespawn) && sprite[pTSprite->owner].owner == 3)
+        if ((pTSprite->flags&kHitagRespawn) && sprite[nSprite].owner == 3)
         {
             dassert(pTXSprite != NULL);
             pTSprite->xrepeat = 48;
@@ -2881,7 +2921,7 @@ void viewProcessSprites(int32_t cX, int32_t cY, int32_t cZ, int32_t cA, int32_t 
                 }
             }
             
-            if (pTSprite->owner != gView->pSprite->index || gViewPos != VIEWPOS_0) {
+            if (nSprite != gView->pSprite->index || gViewPos != VIEWPOS_0) {
                 if (getflorzofslope(pTSprite->sectnum, pTSprite->x, pTSprite->y) >= cZ)
                 {
                     viewAddEffect(nTSprite, kViewEffectShadow);
@@ -3493,7 +3533,7 @@ void viewDrawScreen(void)
             CalcPosition(gView->pSprite, (int*)&cX, (int*)&cY, (int*)&cZ, &nSectnum, fix16_to_int(cA), q16horiz);
         }
         const char bLink = CheckLink((int*)&cX, (int*)&cY, (int*)&cZ, &nSectnum);
-        int v78 = gViewInterpolate ? interpolateang(gScreenTiltO, gScreenTilt, gInterpolate) : gScreenTilt;
+        int nTilt = gViewInterpolate ? interpolateang(gScreenTiltO, gScreenTilt, gInterpolate) : gScreenTilt;
         char nPalCrystalBall = 0;
         bool bDelirium = powerupCheck(gView, kPwUpDeliriumShroom) > 0;
         static bool bDeliriumOld = false;
@@ -3502,7 +3542,7 @@ void viewDrawScreen(void)
 #ifdef USE_OPENGL
         renderSetRollAngle(0);
 #endif
-        if (v78 || bDelirium)
+        if (nTilt || bDelirium)
         {
             if (videoGetRenderMode() == REND_CLASSIC)
             {
@@ -3518,7 +3558,7 @@ void viewDrawScreen(void)
                     tiltdim = 640;
                 }
                 renderSetTarget(TILTBUFFER, tiltdim, tiltdim);
-                int nAng = v78&(kAng90-1);
+                int nAng = nTilt&(kAng90-1);
                 if (nAng > kAng45)
                 {
                     nAng = kAng90-nAng;
@@ -3527,7 +3567,7 @@ void viewDrawScreen(void)
             }
 #ifdef USE_OPENGL
             else
-                renderSetRollAngle(v78);
+                renderSetRollAngle(nTilt);
 #endif
         }
         else if (bCrystalBall)
@@ -3584,13 +3624,13 @@ void viewDrawScreen(void)
             g_visibility = (int32_t)(ClipLow(gVisibility-32*pOther->visibility, 0) * (numplayers > 1 ? 1.f : r_ambientlightrecip));
             int vc4, vc8;
             getzsofslope(vcc, vd8, vd4, &vc8, &vc4);
-            if ((vd0 > vc4-(1<<7)) && (gUpperLink[vcc] == -1)) // clamp to floor
+            if (VanillaMode() ? (vd0 >= vc4) : (vd0 > vc4-(8<<4)) && (gUpperLink[vcc] == -1)) // clamp to floor
             {
-                vd0 = vc4-(1<<7);
+                vd0 = vc4-(8<<4);
             }
-            if ((vd0 < vc8+(1<<7)) && (gLowerLink[vcc] == -1)) // clamp to ceiling
+            if (VanillaMode() ? (vd0 <= vc8) : (vd0 < vc8+(8<<4)) && (gLowerLink[vcc] == -1)) // clamp to ceiling
             {
-                vd0 = vc8+(1<<7);
+                vd0 = vc8+(8<<4);
             }
             v54 = ClipRange(v54, -200, 200);
             int nRORLimit = 32; // limit ROR rendering to 32 times
@@ -3667,13 +3707,13 @@ RORHACKOTHER:
         }
         int vfc, vf8;
         getzsofslope(nSectnum, cX, cY, &vfc, &vf8);
-        if ((cZ > vf8-(1<<7)) && (gUpperLink[nSectnum] == -1)) // clamp to floor
+        if (VanillaMode() ? (cZ >= vf8) : (cZ > vf8-(8<<4)) && (gUpperLink[nSectnum] == -1)) // clamp to floor
         {
-            cZ = vf8-(1<<7);
+            cZ = vf8-(8<<4);
         }
-        if ((cZ < vfc+(1<<7)) && (gLowerLink[nSectnum] == -1)) // clamp to ceiling
+        if (VanillaMode() ? (cZ <= vfc) : (cZ < vfc+(8<<4)) && (gLowerLink[nSectnum] == -1)) // clamp to ceiling
         {
-            cZ = vfc+(1<<7);
+            cZ = vfc+(8<<4);
         }
         q16horiz = ClipRange(q16horiz, F16(-200), F16(200));
         int nRORLimit = 32; // limit ROR rendering to 32 times
@@ -3719,7 +3759,7 @@ RORHACK:
         renderDrawMasks();
         gView->pSprite->cstat = bakCstat;
 
-        if (v78 || bDelirium)
+        if (nTilt || bDelirium)
         {
             if (videoGetRenderMode() == REND_CLASSIC)
             {
@@ -3730,13 +3770,13 @@ RORHACK:
                 {
                     vrc = 64+32+4+2+1+1024;
                 }
-                int nAng = v78 & (kAng90-1);
+                int nAng = nTilt & (kAng90-1);
                 if (nAng > kAng45)
                 {
                     nAng = kAng90 - nAng;
                 }
                 int nScale = dmulscale32(Cos(nAng), 262144, Sin(nAng), 163840)>>tiltcs;
-                rotatesprite(160<<16, 100<<16, nScale, v78+512, TILTBUFFER, 0, 0, vrc, gViewX0, gViewY0, gViewX1, gViewY1);
+                rotatesprite(160<<16, 100<<16, nScale, nTilt+512, TILTBUFFER, 0, 0, vrc, gViewX0, gViewY0, gViewX1, gViewY1);
             }
 #ifdef USE_OPENGL
             else
@@ -3862,7 +3902,35 @@ RORHACK:
     }
     if (gViewMode == 4)
     {
-        gViewMap.sub_25DB0(gView->pSprite);
+        int cX = 0, cY = 0, nAng = 0;
+        if (gViewMap.bFollowMode) // calculate get current player position for 2d map for follow mode
+        {
+            cX = gView->pSprite->x, cY = gView->pSprite->y, nAng = gView->pSprite->ang;
+            if (!VanillaMode()) // interpolate angle for 2d map view
+            {
+                fix16_t cA = gView->q16ang;
+                if (gViewInterpolate)
+                {
+                    if (numplayers > 1 && gView == gMe && gPrediction && gMe->pXSprite->health > 0)
+                    {
+                        cX = interpolate(predictOld.at50, predict.at50, gInterpolate);
+                        cY = interpolate(predictOld.at54, predict.at54, gInterpolate);
+                        cA = interpolateangfix16(predictOld.at30, predict.at30, gInterpolate);
+                    }
+                    else
+                    {
+                        VIEW *pView = &gPrevView[gViewIndex];
+                        cX = interpolate(pView->at50, cX, gInterpolate);
+                        cY = interpolate(pView->at54, cY, gInterpolate);
+                        cA = interpolateangfix16(pView->at30, cA, gInterpolate);
+                    }
+                }
+                if (gView == gMe && (numplayers <= 1 || gPrediction) && gView->pXSprite->health != 0)
+                    cA = gViewAngle;
+                nAng = fix16_to_int(cA);
+            }
+        }
+        gViewMap.Process(cX, cY, nAng);
     }
     viewDrawInterface(delta);
     int zn = ((gView->zWeapon-gView->zView-(12<<8))>>7)+220;
@@ -4099,8 +4167,8 @@ void viewPrintFPS(void)
     static int32_t frameCount;
     static double cumulativeFrameDelay;
     static double lastFrameTime;
-    static float lastFPS, minFPS = FLT_MAX, maxFPS;
-    static double minGameUpdate = DBL_MAX, maxGameUpdate;
+    static float lastFPS, minFPS = std::numeric_limits<float>::max(), maxFPS;
+    static double minGameUpdate = std::numeric_limits<double>::max(), maxGameUpdate;
 
     double frameTime = timerGetFractionalTicks();
     double frameDelay = frameTime - lastFrameTime;

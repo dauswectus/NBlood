@@ -388,15 +388,21 @@ static int GetAutoAimAng(int spriteNum, int playerNum, int projecTile, int zAdju
     return returnSprite;
 }
 
-static void Proj_MaybeSpawn(int spriteNum, int projecTile, const hitdata_t *hitData)
+static void Proj_DirectSpawn(int spriteNum, int projecTile, const hitdata_t *hitData)
 {
-    // atwith < 0 is for hard-coded projectiles
-    projectile_t *const pProj      = Proj_GetProjectile(projecTile);
-    int                 spawnTile  = projecTile < 0 ? -projecTile : pProj->spawns;
-
-    if (spawnTile >= 0)
+    if (projecTile >= 0)
     {
-        int spawned = A_Spawn(spriteNum, spawnTile);
+        int spawned = A_Spawn(spriteNum, projecTile);
+        A_SetHitData(spawned, hitData);
+    }
+}
+
+static void Proj_IndirectSpawn(int spriteNum, int projecTile, const hitdata_t *hitData)
+{
+    projectile_t *const pProj = Proj_GetProjectile(projecTile);
+    if (pProj->spawns >= 0)
+    {
+        int spawned = A_Spawn(spriteNum, pProj->spawns);
 
         if (projecTile >= 0)
         {
@@ -409,6 +415,14 @@ static void Proj_MaybeSpawn(int spriteNum, int projecTile, const hitdata_t *hitD
 
         A_SetHitData(spawned, hitData);
     }
+}
+
+static void Proj_Spawn(int spriteNum, uint16_t projecTile, const hitdata_t *hitData, bool directSpawn)
+{
+    if (directSpawn)
+        Proj_DirectSpawn(spriteNum, projecTile, hitData);
+    else
+        Proj_IndirectSpawn(spriteNum, projecTile, hitData);
 }
 
 // <extra>: damage that this shotspark does
@@ -638,7 +652,7 @@ static void P_DoWeaponRumble(int playerNum)
 
 static int P_PostFireHitscan(int playerNum, int const spriteNum, hitdata_t *const hitData, int const STANDALONE_UNUSED(spriteOwner),
                              int const projecTile, int const zvel, int const spawnTile, int const decalTile, int const wallDamage,
-                             int const decalFlags)
+                             int const decalFlags, bool directProjecTileSpawn)
 {
 #ifdef EDUKE32_STANDALONE
     UNREFERENCED_PARAMETER(playerNum);
@@ -653,7 +667,7 @@ static int P_PostFireHitscan(int playerNum, int const spriteNum, hitdata_t *cons
             return -1;
         }
 
-        Proj_MaybeSpawn(spriteNum, spawnTile, hitData);
+        Proj_Spawn(spriteNum, spawnTile, hitData, directProjecTileSpawn);
     }
     else if (hitData->sprite >= 0)
     {
@@ -675,7 +689,7 @@ static int P_PostFireHitscan(int playerNum, int const spriteNum, hitdata_t *cons
         else
 #endif
         {
-            Proj_MaybeSpawn(spriteNum, spawnTile, hitData);
+            Proj_Spawn(spriteNum, spawnTile, hitData, directProjecTileSpawn);
         }
 #ifndef EDUKE32_STANDALONE
         if (!FURY && playerNum >= 0 && CheckShootSwitchTile(sprite[hitData->sprite].picnum))
@@ -689,7 +703,7 @@ static int P_PostFireHitscan(int playerNum, int const spriteNum, hitdata_t *cons
     {
         auto const hitWall = (uwallptr_t)&wall[hitData->wall];
 
-        Proj_MaybeSpawn(spriteNum, spawnTile, hitData);
+        Proj_Spawn(spriteNum, spawnTile, hitData, directProjecTileSpawn);
 
         if (CheckDoorTile(hitWall->picnum) == 1)
             goto SKIPBULLETHOLE;
@@ -760,7 +774,7 @@ SKIPBULLETHOLE:
 
 // Finish shooting hitscan weapon from actor (sprite <i>).
 static int A_PostFireHitscan(const hitdata_t *hitData, int const spriteNum, int const projecTile, int const zvel, int const shootAng,
-                             int const extra, int const spawnTile, int const wallDamage)
+                             int const extra, int const spawnTile, int const wallDamage, bool directProjecTileSpawn)
 {
     int const returnSprite = Proj_InsertShotspark(hitData, spriteNum, projecTile, 24, shootAng, extra);
 
@@ -769,14 +783,14 @@ static int A_PostFireHitscan(const hitdata_t *hitData, int const spriteNum, int 
         A_DamageObject(hitData->sprite, returnSprite);
 
         if (sprite[hitData->sprite].picnum != APLAYER)
-            Proj_MaybeSpawn(returnSprite, spawnTile, hitData);
+            Proj_Spawn(returnSprite, spawnTile, hitData, directProjecTileSpawn);
         else
             sprite[returnSprite].xrepeat = sprite[returnSprite].yrepeat = 0;
     }
     else if (hitData->wall >= 0)
     {
         A_DamageWall(returnSprite, hitData->wall, hitData->xyz, wallDamage);
-        Proj_MaybeSpawn(returnSprite, spawnTile, hitData);
+        Proj_Spawn(returnSprite, spawnTile, hitData, directProjecTileSpawn);
     }
     else
     {
@@ -785,7 +799,7 @@ static int A_PostFireHitscan(const hitdata_t *hitData, int const spriteNum, int 
             sprite[returnSprite].xrepeat = 0;
             sprite[returnSprite].yrepeat = 0;
         }
-        else Proj_MaybeSpawn(returnSprite, spawnTile, hitData);
+        else Proj_Spawn(returnSprite, spawnTile, hitData, directProjecTileSpawn);
     }
 
     return returnSprite;
@@ -926,13 +940,13 @@ static int A_ShootCustom(int const spriteNum, int const projecTile, int shootAng
             otherSprite = Proj_InsertShotspark(&hitData, spriteNum, projecTile, 10, shootAng, Proj_GetDamage(pProj));
 
             if (P_PostFireHitscan(playerNum, otherSprite, &hitData, spriteNum, projecTile, zvel, projecTile, pProj->decal,
-                                  projecTile, 1 + 2) < 0)
+                                  projecTile, 1 + 2, false) < 0)
                 return -1;
         }
         else
         {
             otherSprite =
-            A_PostFireHitscan(&hitData, spriteNum, projecTile, zvel, shootAng, Proj_GetDamage(pProj), projecTile, projecTile);
+            A_PostFireHitscan(&hitData, spriteNum, projecTile, zvel, shootAng, Proj_GetDamage(pProj), projecTile, projecTile, false);
         }
 
         if ((krand() & 255) < 4 && pProj->isound >= 0)
@@ -1203,13 +1217,12 @@ static int32_t A_ShootHardcoded(int spriteNum, int projecTile, int shootAng, vec
             {
                 spawnedSprite = Proj_InsertShotspark(&hitData, spriteNum, projecTile, 10, shootAng, G_DefaultActorHealthForTile(projecTile) + (krand() % 6));
 
-                if (P_PostFireHitscan(playerNum, spawnedSprite, &hitData, spriteNum, projecTile, Zvel, -SMALLSMOKE, BULLETHOLE, SHOTSPARK1, 0) < 0)
+                if (P_PostFireHitscan(playerNum, spawnedSprite, &hitData, spriteNum, projecTile, Zvel, SMALLSMOKE, BULLETHOLE, SHOTSPARK1, 0, true) < 0)
                     return -1;
             }
             else
             {
-                spawnedSprite = A_PostFireHitscan(&hitData, spriteNum, projecTile, Zvel, shootAng, G_DefaultActorHealthForTile(projecTile), -SMALLSMOKE,
-                    SHOTSPARK1);
+                spawnedSprite = A_PostFireHitscan(&hitData, spriteNum, projecTile, Zvel, shootAng, G_DefaultActorHealthForTile(projecTile), SMALLSMOKE, SHOTSPARK1, true);
             }
 
             if ((krand() & 255) < 4)
@@ -2054,9 +2067,16 @@ static void P_FireWeapon(int playerNum)
 
     P_SetWeaponGamevars(playerNum, pPlayer);
     //        OSD_Printf("doing %d %d %d\n",PWEAPON(snum, p->curr_weapon, Shoots),p->curr_weapon,snum);
-    A_Shoot(pPlayer->i, PWEAPON(playerNum, pPlayer->curr_weapon, Shoots));
 
-    for (bssize_t burstFire = PWEAPON(playerNum, pPlayer->curr_weapon, ShotsPerBurst) - 1; burstFire > 0; --burstFire)
+    ud.returnvar[0] = 0;
+    if (VM_OnEventWithReturn(EVENT_PREWEAPONSHOOT, pPlayer->i, playerNum, 0) == 0)
+    {
+        auto const retVal = A_Shoot(pPlayer->i, PWEAPON(playerNum, pPlayer->curr_weapon, Shoots));
+        ud.returnvar[0] = 0;
+        VM_OnEventWithReturn(EVENT_POSTWEAPONSHOOT, pPlayer->i, playerNum, retVal);
+    }
+
+    for (bssize_t burstFire = 1; burstFire < PWEAPON(playerNum, pPlayer->curr_weapon, ShotsPerBurst); burstFire++)
     {
         if (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_FIREEVERYOTHER)
         {
@@ -2074,7 +2094,13 @@ static void P_FireWeapon(int playerNum)
                     break;
             }
 
-            A_Shoot(pPlayer->i, PWEAPON(playerNum, pPlayer->curr_weapon, Shoots));
+            ud.returnvar[0] = burstFire;
+            if (VM_OnEventWithReturn(EVENT_PREWEAPONSHOOT, pPlayer->i, playerNum, 0) == 0)
+            {
+                auto const retVal = A_Shoot(pPlayer->i, PWEAPON(playerNum, pPlayer->curr_weapon, Shoots));
+                ud.returnvar[0] = burstFire;
+                VM_OnEventWithReturn(EVENT_POSTWEAPONSHOOT, pPlayer->i, playerNum, retVal);
+            }
         }
     }
 
@@ -2986,7 +3012,7 @@ enddisplayweapon:;
 
 int32_t g_myAimMode, g_myAimStat, g_oldAimStat;
 int32_t mouseyaxismode = -1;
-double g_lastInputTicks;
+uint64_t g_lastInputTicks;
 
 enum inputlock_t
 {
@@ -3034,15 +3060,15 @@ void P_UpdateAngles(int const playerNum, input_t &input)
         thisPlayer.input = pInput;
     }
 
-    auto const currentHiTicks    = timerGetFractionalTicks();
-    double     elapsedInputTicks = currentHiTicks - thisPlayer.lastViewUpdate;
+    auto const currentNanoTicks  = timerGetNanoTicks();
+    auto       elapsedInputTicks = currentNanoTicks - thisPlayer.lastViewUpdate;
 
     if (!thisPlayer.lastViewUpdate)
         elapsedInputTicks = 0;
 
-    thisPlayer.lastViewUpdate = currentHiTicks;
+    thisPlayer.lastViewUpdate = currentNanoTicks;
 
-    auto scaleToInterval = [=](double x) { return x * REALGAMETICSPERSEC / (1000.0 / min(elapsedInputTicks, 1000.0)); };
+    auto scaleToInterval = [=](double x) { return x * REALGAMETICSPERSEC / ((double)timerGetNanoTickRate() / min<double>(elapsedInputTicks, timerGetNanoTickRate())); };
 
     int const movementLocked = P_CheckLockedMovement(playerNum);
 
@@ -3090,13 +3116,23 @@ void P_UpdateAngles(int const playerNum, input_t &input)
 
         if (currentSector >= 0)
         {
-            int const slopeZ = yax_getflorzofslope(pPlayer->cursectnum, adjustedPosition);
-            if ((pPlayer->cursectnum == currentSector) || (klabs(yax_getflorzofslope(currentSector, adjustedPosition) - slopeZ) <= ZOFFSET6))
-                pPlayer->q16horizoff = fix16_sadd(pPlayer->q16horizoff, fix16_from_float(scaleToInterval(mulscale16(pPlayer->truefz - slopeZ, 160))));
+#ifdef YAX_ENABLE
+            int const slopeZ = yax_getflorzofslope(currentSector, adjustedPosition);
+            int const floorZ = yax_getflorzofslope(pPlayer->cursectnum, pPlayer->pos.xy);
+#else
+            int const slopeZ = getflorzofslope(currentSector, adjustedPosition.x, adjustedPosition.y);
+            int const floorZ = getflorzofslope(pPlayer->cursectnum, pPlayer->pos.x, pPlayer->pos.y);
+#endif
+
+            if ((pPlayer->cursectnum == currentSector) || (klabs(floorZ - slopeZ) <= ZOFFSET6))
+            {
+                pPlayer->q16horizoff = fix16_from_float(fix16_to_float(pPlayer->q16horizoff) + scaleToInterval((floorZ - slopeZ) * 160 * (1.f/65536.f)));
+                // LOG_F(INFO, "%g", fix16_to_float(pPlayer->q16horizoff));
+            }
         }
     }
 
-    // view centering only works if there's no input on the right stick (looking/aiming) and the player is moving forward/backward, not strafing
+    // view centering is only used if there's no input on the right stick (looking/aiming) and the player is moving forward/backward, not strafing
     if (pPlayer->aim_mode&AM_CENTERING && !input.q16avel && !input.q16horz && input.fvel)
     {
         if (pPlayer->q16horiz >= F16(99) && pPlayer->q16horiz <= F16(100))
@@ -3124,12 +3160,16 @@ void P_UpdateAngles(int const playerNum, input_t &input)
                 pPlayer->q16horizoff = fix16_ssub(pPlayer->q16horizoff, scaled);
         }
     }
-    else if (pPlayer->q16horizoff > F16(1))
-        pPlayer->q16horizoff = fix16_ssub(pPlayer->q16horizoff, fix16_from_float(scaleToInterval(fix16_to_float((pPlayer->q16horizoff >> 3) + fix16_one))));
-    else if (pPlayer->q16horizoff < F16(-1))
-        pPlayer->q16horizoff = fix16_sadd(pPlayer->q16horizoff, fix16_from_float(scaleToInterval(fix16_to_float((-pPlayer->q16horizoff >> 3) + fix16_one))));
-    else if (pPlayer->q16horizoff >= F16(-1) && pPlayer->q16horizoff <= F16(1))
-        pPlayer->q16horizoff = 0;
+    else if (pPlayer->q16horizoff > F16(0))
+    {
+        pPlayer->q16horizoff = fix16_ssub(pPlayer->q16horizoff, fix16_from_float(scaleToInterval(fix16_to_float(fix16_div(pPlayer->q16horizoff, F16(8))))));
+        pPlayer->q16horizoff = fix16_max(pPlayer->q16horizoff, 0);
+    }
+    else if (pPlayer->q16horizoff < F16(0))
+    {
+        pPlayer->q16horizoff = fix16_sadd(pPlayer->q16horizoff, fix16_from_float(scaleToInterval(-fix16_to_float(fix16_div(pPlayer->q16horizoff, F16(8))))));
+        pPlayer->q16horizoff = fix16_min(pPlayer->q16horizoff, 0);
+    }
 
     if (thisPlayer.horizSkew)
         pPlayer->q16horiz = fix16_sadd(pPlayer->q16horiz, fix16_from_float(scaleToInterval(thisPlayer.horizSkew)));
@@ -3154,7 +3194,7 @@ void P_GetInput(int const playerNum)
     auto const pPlayer    = thisPlayer.ps;
     ControlInfo info;
 
-    if (g_cheatBufLen > 1 || (pPlayer->gm & (MODE_MENU|MODE_TYPE)) || (ud.pause_on && !KB_KeyPressed(sc_Pause)) || g_saveRequested)
+    if (g_cheatBufLen > 1 || (pPlayer->gm & (MODE_MENU|MODE_TYPE)) || (ud.pause_on && !KB_KeyPressed(sc_Pause)))
     {
         if (!(pPlayer->gm&MODE_MENU))
             CONTROL_GetInput(&info);
@@ -3162,13 +3202,13 @@ void P_GetInput(int const playerNum)
         thisPlayer.lastViewUpdate = 0;
         localInput = {};
         localInput.bits    = (((int32_t)g_gameQuit) << SK_GAMEQUIT);
-        localInput.extbits |= BIT(EK_CHAT_MODE);
+        localInput.extbits = BIT(EK_CHAT_MODE);
 
         return;
     }
 
     CONTROL_ProcessBinds();
-    
+
     if (ud.mouseaiming)
         g_myAimMode = BUTTON(gamefunc_Mouse_Aiming);
     else
@@ -3228,15 +3268,15 @@ void P_GetInput(int const playerNum)
 
     input_t input {};
 
-    auto const currentHiTicks    = timerGetFractionalTicks();
-    double     elapsedInputTicks = currentHiTicks - g_lastInputTicks;
+    auto const currentNanoTicks  = timerGetNanoTicks();
+    auto       elapsedInputTicks = currentNanoTicks - g_lastInputTicks;
 
     if (!g_lastInputTicks)
         elapsedInputTicks = 0;
 
-    g_lastInputTicks = currentHiTicks;
+    g_lastInputTicks = currentNanoTicks;
 
-    auto scaleToInterval = [=](double x) { return x * REALGAMETICSPERSEC / (1000.0 / min(elapsedInputTicks, 1000.0)); };
+    auto scaleToInterval = [=](double x) { return x * REALGAMETICSPERSEC / ((double)timerGetNanoTickRate() / min<double>(elapsedInputTicks, timerGetNanoTickRate())); };
 
     if (BUTTON(gamefunc_Strafe))
     {
@@ -3263,7 +3303,7 @@ void P_GetInput(int const playerNum)
     input.q16horz = fix16_ssub(input.q16horz, fix16_from_float(scaleToInterval(info.dpitch * 16.0 / analogExtent)));
     input.svel -= lrint(scaleToInterval(info.dx * keyMove / analogExtent));
     input.fvel -= lrint(scaleToInterval(info.dz * keyMove / analogExtent));
-    
+
     if (BUTTON(gamefunc_Strafe))
     {
         if (!localInput.svel)
@@ -4253,7 +4293,15 @@ static void P_ProcessWeapon(int playerNum)
             }
 
             if (actor[pPlayer->i].t_data[7] != 0)
-                A_Shoot(pPlayer->i,PWEAPON(playerNum, pPlayer->curr_weapon, Shoots));
+            {
+                int const currentShot = ud.returnvar[0] = PWEAPON(playerNum, pPlayer->curr_weapon, ShotsPerBurst) - (actor[pPlayer->i].t_data[7] >> 1);
+                if (VM_OnEventWithReturn(EVENT_PREWEAPONSHOOT, pPlayer->i, playerNum, 0) == 0)
+                {
+                    auto const retVal = A_Shoot(pPlayer->i, PWEAPON(playerNum, pPlayer->curr_weapon, Shoots));
+                    ud.returnvar[0] = currentShot;
+                    VM_OnEventWithReturn(EVENT_POSTWEAPONSHOOT, pPlayer->i, playerNum, retVal);
+                }
+            }
         }
     }
 
@@ -4266,6 +4314,7 @@ static void P_ProcessWeapon(int playerNum)
 
     bool const doFire    = (playerBits & BIT(SK_FIRE) && (*weaponFrame) == 0);
     bool const doAltFire = g_player[playerNum].input.extbits & BIT(EK_ALT_FIRE);
+    bool startFiring     = false;
 
     if (doAltFire)
     {
@@ -4304,7 +4353,7 @@ static void P_ProcessWeapon(int playerNum)
                         pPlayer->hbomb_hold_delay = 0;
                         if (pPlayer->ammo_amount[pPlayer->curr_weapon] > 0)
                         {
-                            (*weaponFrame) = 1;
+                            startFiring = true;
                             if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0)
                                 A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
                         }
@@ -4312,7 +4361,7 @@ static void P_ProcessWeapon(int playerNum)
 
                     case HANDREMOTE_WEAPON:
                         pPlayer->hbomb_hold_delay = 0;
-                        (*weaponFrame)            = 1;
+                        startFiring               = true;
                         if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0)
                             A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
                         break;
@@ -4360,7 +4409,7 @@ static void P_ProcessWeapon(int playerNum)
                                     {
                                         pPlayer->pos.z = pPlayer->opos.z;
                                         pPlayer->vel.z = 0;
-                                        (*weaponFrame) = 1;
+                                        startFiring    = true;
                                         if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0)
                                         {
                                             A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
@@ -4379,7 +4428,7 @@ static void P_ProcessWeapon(int playerNum)
                     case RPG_WEAPON:
                         if (pPlayer->ammo_amount[pPlayer->curr_weapon] > 0)
                         {
-                            (*weaponFrame) = 1;
+                            startFiring = true;
                             if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0)
                                 A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
                         }
@@ -4388,7 +4437,7 @@ static void P_ProcessWeapon(int playerNum)
                     case FLAMETHROWER_WEAPON:
                         if (pPlayer->ammo_amount[pPlayer->curr_weapon] > 0)
                         {
-                            (*weaponFrame) = 1;
+                            startFiring = true;
                             if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0 && sector[pPlayer->cursectnum].lotag != ST_2_UNDERWATER)
                                 A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
                         }
@@ -4397,7 +4446,7 @@ static void P_ProcessWeapon(int playerNum)
                     case DEVISTATOR_WEAPON:
                         if (pPlayer->ammo_amount[pPlayer->curr_weapon] > 0)
                         {
-                            (*weaponFrame)            = 1;
+                            startFiring               = true;
                             pPlayer->hbomb_hold_delay = !pPlayer->hbomb_hold_delay;
                             if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0)
                                 A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
@@ -4405,9 +4454,9 @@ static void P_ProcessWeapon(int playerNum)
                         break;
 
                     case KNEE_WEAPON:
-                        if (pPlayer->quick_kick == 0)
+                        if (dukeAllowQuickKick() || pPlayer->quick_kick == 0)
                         {
-                            (*weaponFrame) = 1;
+                            startFiring = true;
                             if (PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound) > 0)
                                 A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, InitialSound), pPlayer->i);
                         }
@@ -4416,7 +4465,8 @@ static void P_ProcessWeapon(int playerNum)
             }
         }
     }
-    else if (*weaponFrame)
+
+    if (startFiring || *weaponFrame)
     {
         if (PWEAPON(playerNum, pPlayer->curr_weapon, WorksLike) == HANDBOMB_WEAPON)
         {
@@ -4563,7 +4613,8 @@ static void P_ProcessWeapon(int playerNum)
                 if (PWEAPON(playerNum, pPlayer->curr_weapon, Sound2Sound) > 0)
                     A_PlaySound(PWEAPON(playerNum, pPlayer->curr_weapon, Sound2Sound),pPlayer->i);
 
-            if (*weaponFrame == PWEAPON(playerNum, pPlayer->curr_weapon, SpawnTime))
+            if ((*weaponFrame == PWEAPON(playerNum, pPlayer->curr_weapon, SpawnTime))
+                && !(startFiring && (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & (WEAPON_FIREEVERYTHIRD | WEAPON_FIREEVERYOTHER))))
                 P_DoWeaponSpawn(playerNum);
 
             if ((*weaponFrame) >= PWEAPON(playerNum, pPlayer->curr_weapon, TotalTime))
@@ -4623,15 +4674,18 @@ static void P_ProcessWeapon(int playerNum)
                     }
                 }
             }
-            else if (*weaponFrame >= PWEAPON(playerNum, pPlayer->curr_weapon, FireDelay)
+
+            if (*weaponFrame >= PWEAPON(playerNum, pPlayer->curr_weapon, FireDelay)
+                     && ((*weaponFrame) < PWEAPON(playerNum, pPlayer->curr_weapon, TotalTime))
                      && ((PWEAPON(playerNum, pPlayer->curr_weapon, WorksLike) == KNEE_WEAPON) || pPlayer->ammo_amount[pPlayer->curr_weapon] > 0))
             {
                 if (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_AUTOMATIC)
                 {
                     if (!(PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_SEMIAUTO))
                     {
-                        if (TEST_SYNC_KEY(playerBits, SK_FIRE) == 0 && (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_RESET || WW2GI))
+                        if (TEST_SYNC_KEY(playerBits, SK_FIRE) == 0 && WW2GI)
                             *weaponFrame = PWEAPON(playerNum, pPlayer->curr_weapon, TotalTime);
+
                         if (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_FIREEVERYTHIRD)
                         {
                             if (((*(weaponFrame))%3) == 0)
@@ -4653,6 +4707,10 @@ static void P_ProcessWeapon(int playerNum)
 //                                P_DoWeaponSpawn(snum);
                             }
                         }
+
+                        if (TEST_SYNC_KEY(playerBits, SK_FIRE) == 0 && !WW2GI && (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_RESET))
+                            *weaponFrame = PWEAPON(playerNum, pPlayer->curr_weapon, TotalTime);
+
                         if (PWEAPON(playerNum, pPlayer->curr_weapon, Flags) & WEAPON_RESET
                             && (*weaponFrame) > PWEAPON(playerNum, pPlayer->curr_weapon, TotalTime)
                                                 - PWEAPON(playerNum, pPlayer->curr_weapon, HoldDelay)
@@ -4949,8 +5007,7 @@ static void P_ClampZ(DukePlayer_t* const pPlayer, int const sectorLotag, int32_t
         pPlayer->pos.z = floorZ - PMINHEIGHT;
 }
 
-
-#define GETZRANGECLIPDISTOFFSET 16
+#define GETZRANGECLIPDISTOFFSET 4
 
 void P_ProcessInput(int playerNum)
 {
@@ -4978,6 +5035,12 @@ void P_ProcessInput(int playerNum)
 
     if (pPlayer->cursectnum == -1)
     {
+        pPlayer->cursectnum = pSprite->sectnum;
+        updatesector(pPlayer->pos.x, pPlayer->pos.y, &pPlayer->cursectnum);
+    }
+
+    if (pPlayer->cursectnum == -1)
+    {
         if (pSprite->extra > 0 && ud.noclip == 0)
         {
             LOG_F(WARNING, "%s: player killed by cursectnum == -1!", EDUKE32_FUNCTION);
@@ -4993,39 +5056,60 @@ void P_ProcessInput(int playerNum)
 
     // sectorLotag can be set to 0 later on, but the same block sets spritebridge to 1
     int sectorLotag       = sector[pPlayer->cursectnum].lotag;
-    int getZRangeClipDist = pPlayer->clipdist - GETZRANGECLIPDISTOFFSET;
-    int getZRangeOffset   = (((TEST_SYNC_KEY(playerBits, SK_CROUCH) && sectorLotag != ST_2_UNDERWATER && (FURY || (pPlayer->on_ground && !pPlayer->jumping_toggle)))
+    int getZRangeClipDist = (pPlayer->clipdist >> 1) - GETZRANGECLIPDISTOFFSET;
+    int const stepHeight  = (((TEST_SYNC_KEY(playerBits, SK_CROUCH) && sectorLotag != ST_2_UNDERWATER && ((pPlayer->on_ground && !pPlayer->jumping_toggle)))
                             || (sectorLotag == ST_1_ABOVE_WATER && pPlayer->spritebridge != 1)))
                             ? pPlayer->autostep_sbw
                             : pPlayer->autostep;
 
     int32_t floorZ, ceilZ, highZhit, lowZhit;
-    int const stepHeight = getZRangeOffset;
 
     // if not running Ion Fury, purposely break part of the clipping system
     // this is what makes Duke step up onto sprite constructions he shouldn't automatically step up onto
     if (!FURY)
     {
-        getZRangeOffset   = 0;
         getZRangeClipDist = pPlayer->clipdist - 1;
+        getzrange(&pPlayer->pos, pPlayer->cursectnum, &ceilZ, &highZhit, &floorZ, &lowZhit, getZRangeClipDist, CLIPMASK0);
     }
     else
     {
-        // we want to take these into account for getzrange() but not for the clipmove() call below
-        // this isn't taken into account when getZRangeOffset is initialized above because we first need
-        // the stepHeight value without this factored in
-        if (sectorLotag != ST_2_UNDERWATER)
-        {
-            if (pPlayer->pos.z + getZRangeOffset > actor[pPlayer->i].floorz - PMINHEIGHT)
-                getZRangeOffset -= klabs((pPlayer->pos.z + getZRangeOffset) - (actor[pPlayer->i].floorz - PMINHEIGHT));
-            else if (pPlayer->pos.z + getZRangeOffset < actor[pPlayer->i].ceilingz + PMINHEIGHT)
-                getZRangeOffset += klabs((actor[pPlayer->i].ceilingz + PMINHEIGHT) - (pPlayer->pos.z + getZRangeOffset));
-        }
-    }
+        uint16_t const ocstat = pSprite->cstat;
+        pSprite->cstat &= ~CSTAT_SPRITE_BLOCK;
 
-    pPlayer->pos.z += getZRangeOffset;
-    getzrange(&pPlayer->pos, pPlayer->cursectnum, &ceilZ, &highZhit, &floorZ, &lowZhit, getZRangeClipDist, CLIPMASK0);
-    pPlayer->pos.z -= getZRangeOffset;
+        int32_t cz[4], fz[4], hzhit[4], lzhit[4];
+        vec3_t pos[4] = { pPlayer->pos, pPlayer->pos, pPlayer->pos, pPlayer->pos };
+        
+        int const thirdStep = pPlayer->autostep_sbw / 3;
+
+        pos[0].z += pPlayer->autostep_sbw;
+        pos[1].z += thirdStep << 1;
+        pos[2].z += thirdStep;
+
+        for (int i = 0; i < 4; ++i)
+            getzrange(&pos[i], pPlayer->cursectnum, &cz[i], &hzhit[i], &fz[i], &lzhit[i], getZRangeClipDist, CLIPMASK0);
+
+        pSprite->cstat = ocstat;
+
+        ceilZ    = cz[2];
+        highZhit = hzhit[2];
+
+        for (int i = 1; i < 3; ++i)
+            if (hzhit[i] == hzhit[i+1])
+            {
+                ceilZ    = cz[i];
+                highZhit = hzhit[i];
+            }
+
+        floorZ  = fz[1];
+        lowZhit = lzhit[1];
+
+        for (int i = 2; i >= 0; --i)
+            if (lzhit[i] == lzhit[i+1])
+            {
+                floorZ  = fz[i];
+                lowZhit = lzhit[i];
+            }
+    }
 
     pPlayer->spritebridge = 0;
     pPlayer->sbs          = 0;
@@ -5043,7 +5127,8 @@ void P_ProcessInput(int playerNum)
     if ((lowZhit & 49152) == 16384 && sectorLotag == 1 && trueFloorDist > pPlayer->spritezoffset + ZOFFSET2)
         sectorLotag = 0;
 
-    if ((highZhit & 49152) == 49152)
+#ifndef EDUKE32_STANDALONE
+    if (!FURY && (highZhit & 49152) == 49152)
     {
         int const spriteNum = highZhit & (MAXSPRITES-1);
 
@@ -5054,6 +5139,7 @@ void P_ProcessInput(int playerNum)
             ceilZ    = pPlayer->truecz;
         }
     }
+#endif
 
     actor[pPlayer->i].floorz   = floorZ;
     actor[pPlayer->i].ceilingz = ceilZ;
@@ -5402,12 +5488,13 @@ void P_ProcessInput(int playerNum)
                 //Smooth on the ground
                 int Zdiff = ((floorZ - floorZOffset) - pPlayer->pos.z) >> 1;
 
-                if (klabs(Zdiff) < 256)
+                // why does this even exist?
+                if (klabs(Zdiff) < pPlayer->floorzcutoff)
                     Zdiff = 0;
                 else if (!playerShrunk)
                     pPlayer->pos.z += Zdiff;
 
-                pPlayer->vel.z -= 768;
+                pPlayer->vel.z -= pPlayer->floorzrebound;
 
                 if (pPlayer->vel.z < 0)
                     pPlayer->vel.z = 0;
@@ -5934,7 +6021,7 @@ int portableBackupSave(const char * path, const char * name, int volume, int lev
     sjson_context * ctx = sjson_create_context(0, 0, NULL);
     if (!ctx)
     {
-        buildprint("Could not create sjson_context\n");
+        LOG_F(ERROR, "Could not create sjson_context");
         return 1;
     }
 
@@ -6015,7 +6102,7 @@ int portableBackupSave(const char * path, const char * name, int volume, int lev
     char errmsg[256];
     if (!sjson_check(root, errmsg))
     {
-        buildprint(errmsg, "\n");
+        LOG_F(ERROR, "%s", errmsg);
         sjson_destroy_context(ctx);
         return 1;
     }

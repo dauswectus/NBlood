@@ -32,11 +32,9 @@ Prepared for public release: 03/28/2005 - Charlie Wiederhold, 3D Realms
 //
 //****************************************************************************
 
-#ifndef common_public_
-#define common_public_
-#ifdef __cplusplus
-extern "C" {
-#endif
+#ifndef SW_COMMON_GAME_H_
+#define SW_COMMON_GAME_H_
+#pragma once
 
 //****************************************************************************
 //
@@ -172,7 +170,7 @@ enum searchpathtypes_t {
 
 extern int g_addonNum;
 
-typedef enum basepal_ {
+typedef enum sw_basepal_ {
     BASEPAL = 0,
     DREALMSPAL,
     TITLEPAL,
@@ -181,7 +179,4 @@ typedef enum basepal_ {
     BASEPALCOUNT
 } basepal_t;
 
-#ifdef __cplusplus
-};
-#endif
 #endif

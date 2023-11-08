@@ -19,15 +19,18 @@
 
 #include "common_game.h"
 
-const char *AppProperName = "EKenBuild Editor";
+const char *AppProperName = "EKenBuild-Editor";
 const char *AppTechnicalName = "ekenbuild-editor";
 
 #if defined(_WIN32)
-#define DEFAULT_GAME_EXEC "ekenbuild.exe"
-#define DEFAULT_GAME_LOCAL_EXEC "ekenbuild.exe"
+#define DEFAULT_GAME_EXEC APPBASENAME ".exe"
+#define DEFAULT_GAME_LOCAL_EXEC APPBASENAME ".exe"
+#elif defined(__APPLE__)
+#define DEFAULT_GAME_EXEC APPNAME ".app/Contents/MacOS/" APPBASENAME
+#define DEFAULT_GAME_LOCAL_EXEC APPNAME ".app/Contents/MacOS/" APPBASENAME
 #else
-#define DEFAULT_GAME_EXEC "ekenbuild"
-#define DEFAULT_GAME_LOCAL_EXEC "./ekenbuild"
+#define DEFAULT_GAME_EXEC APPBASENAME
+#define DEFAULT_GAME_LOCAL_EXEC "./" APPBASENAME
 #endif
 
 const char *DefaultGameExec = DEFAULT_GAME_EXEC;
@@ -93,14 +96,12 @@ const char *ExtGetVer(void)
 
 int32_t ExtPreInit(int32_t argc,char const * const * argv)
 {
-    UNREFERENCED_PARAMETER(argc);
-    UNREFERENCED_PARAMETER(argv);
+    Ken_ExtPreInit(argc, argv);
 
-    OSD_SetLogFile("ekenbuild-editor.log");
     char tempbuf[256];
     snprintf(tempbuf, ARRAY_SIZE(tempbuf), "%s %s", AppProperName, s_buildRev);
     OSD_SetVersion(tempbuf, 10,0);
-    buildprintf("%s\n", tempbuf);
+    LOG_F(INFO, "%s", tempbuf);
     PrintBuildInfo();
 
     return 0;
@@ -108,6 +109,8 @@ int32_t ExtPreInit(int32_t argc,char const * const * argv)
 
 int32_t ExtInit(void)
 {
+    Ken_ExtInit();
+
     int rv = 0;
 
     /*printf("------------------------------------------------------------------------------\n");
@@ -123,7 +126,11 @@ int32_t ExtInit(void)
     OSD_SetParameters(0,2, 0,0, 4,0, 0, 0, 0, 0); // TODO
 
     bpp = 8;
-    if (loadsetup(setupfilename) < 0) buildputs("Configuration file not found, using defaults.\n"), rv = 1;
+    if (loadsetup(setupfilename) < 0)
+    {
+        LOG_F(INFO, "Configuration file not found, using defaults.");
+        rv = 1;
+    }
     Bmemcpy(buildkeys, default_buildkeys, NUMBUILDKEYS);   //Trick to make build use setup.dat keys
     if (option[4] > 0) option[4] = 0;
 
@@ -144,7 +151,7 @@ int32_t ExtPostStartupWindow(void)
 
     if (engineInit())
     {
-        initprintf("There was a problem initializing the engine.\n");
+        LOG_F(ERROR, "There was a problem initializing the engine: %s", engineerrstr);
         return -1;
     }
 
@@ -288,7 +295,8 @@ void ExtAnalyzeSprites(int32_t ourx, int32_t oury, int32_t ourz, int32_t oura, i
                 if (voxid_PLAYER == -1)
                     break;
 
-                tspr->cstat |= 48;
+                tspr->clipdist |= TSPR_FLAGS_SLAB;
+                tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT;
                 tspr->picnum = voxid_PLAYER;
 
                 longptr = (int32_t *)voxoff[voxid_PLAYER][0];
@@ -300,7 +308,8 @@ void ExtAnalyzeSprites(int32_t ourx, int32_t oury, int32_t ourz, int32_t oura, i
                 if (voxid_BROWNMONSTER == -1)
                     break;
 
-                tspr->cstat |= 48;
+                tspr->clipdist |= TSPR_FLAGS_SLAB;
+                tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT;
                 tspr->picnum = voxid_BROWNMONSTER;
                 break;
             }

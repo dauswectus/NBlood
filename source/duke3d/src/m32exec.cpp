@@ -1157,6 +1157,21 @@ skip_check:
             }
             continue;
 
+        case CON_WHILEVARE:
+        {
+            instype *savedinsptr=insptr+2;
+            int32_t j;
+            do
+            {
+                insptr=savedinsptr;
+                j = (Gv_GetVar(*(insptr-1)) == *insptr);
+                VM_DoConditional(j);
+            }
+            while (j && !vm.flags);
+            vm.flags &= ~VMFLAG_BREAK;
+            continue;
+        }
+
         case CON_WHILEVARN:
         {
             instype *savedinsptr=insptr+2;
@@ -1180,6 +1195,23 @@ skip_check:
             {
                 insptr=savedinsptr;
                 j = (Gv_GetVar(*(insptr-1)) < *insptr);
+                VM_DoConditional(j);
+            }
+            while (j && !vm.flags);
+            vm.flags &= ~VMFLAG_BREAK;
+            continue;
+        }
+
+        case CON_WHILEVARVARE:
+        {
+            int32_t j;
+            instype *savedinsptr=insptr+2;
+            do
+            {
+                insptr=savedinsptr;
+                j = Gv_GetVar(*(insptr-1));
+                j = (j == Gv_GetVar(*insptr++));
+                insptr--;
                 VM_DoConditional(j);
             }
             while (j && !vm.flags);
@@ -1242,7 +1274,7 @@ skip_check:
                 int32_t *const sectlist32 = (int32_t *)sectlist;
 
                 int32_t j, startwall, endwall, ns;
-                static uint8_t sectbitmap[(MAXSECTORS+7)>>3];
+                static uint8_t sectbitmap[bitmap_size(MAXSECTORS)];
 
                 X_ERROR_INVALIDSECT(startsectnum);
                 if (arsize < numsectors)
@@ -1259,7 +1291,7 @@ skip_check:
                     for (WALLS_OF_SECTOR(sectlist[sectcnt], j))
                         if ((ns=wall[j].nextsector) >= 0 && wall[j].nextsector<numsectors)
                         {
-                            if (sectbitmap[ns>>3]&pow2char[ns&7])
+                            if (bitmap_test(sectbitmap, ns))
                                 continue;
                             vm.g_st = 1+MAXEVENTS+state;
                             insptr = apScript + statesinfo[state].ofs;
@@ -1668,9 +1700,9 @@ badindex:
                 }
 
                 if (id==M32_SPRITE_VAR_ID)
-                    VM_DoConditional(show2dsprite[index>>3]&pow2char[index&7]);
+                    VM_DoConditional(bitmap_test(show2dsprite, index));
                 else
-                    VM_DoConditional(show2dwall[index>>3]&pow2char[index&7]);
+                    VM_DoConditional(bitmap_test(show2dwall, index));
             }
             continue;
 
@@ -2132,16 +2164,16 @@ badindex:
                 {
                 case CON_UPDATESECTORNEIGHBORZ:
                     updatesectorneighborz(x,y,z,&w,getsectordist({x, y}, w));
-                    continue;
+                    break;
                 case CON_UPDATESECTORZ:
                     updatesectorz(x,y,z,&w);
-                    continue;
+                    break;
                 case CON_UPDATESECTORNEIGHBOR:
                     updatesectorneighbor(x,y,&w,getsectordist({x, y}, w));
-                    continue;
+                    break;
                 default:
                     updatesector(x,y,&w);
-                    continue;
+                    break;
                 }
 
                 Gv_SetVar(var, w);
@@ -2345,9 +2377,9 @@ badindex:
                     }
 
                     if (doset)
-                        show2dsprite[index>>3] |= pow2char[index&7];
+                        bitmap_set(show2dsprite, index);
                     else
-                        show2dsprite[index>>3] &= ~pow2char[index&7];
+                        bitmap_clear(show2dsprite, index);
                 }
                 else
                 {
@@ -2358,9 +2390,9 @@ badindex:
                     }
 
                     if (doset)
-                        show2dwall[index>>3] |= pow2char[index&7];
+                        bitmap_set(show2dwall, index);
                     else
-                        show2dwall[index>>3] &= ~pow2char[index&7];
+                        bitmap_clear(show2dwall, index);
                 }
 
                 vm.miscflags |= VMFLAG_MISC_UPDATEHL;
@@ -2382,9 +2414,9 @@ badindex:
                 X_ERROR_INVALIDSECT(index);
 
                 if (doset)
-                    hlsectorbitmap[index>>3] |= pow2char[index&7];
+                    bitmap_set(hlsectorbitmap, index);
                 else
-                    hlsectorbitmap[index>>3] &= ~pow2char[index&7];
+                    bitmap_clear(hlsectorbitmap, index);
 
                 vm.miscflags |= VMFLAG_MISC_UPDATEHLSECT;
 

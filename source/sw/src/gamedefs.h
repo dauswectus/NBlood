@@ -36,9 +36,6 @@ Prepared for public release: 03/28/2005 - Charlie Wiederhold, 3D Realms
 
 #ifndef gamedefs_public_
 #define gamedefs_public_
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 //****************************************************************************
 //
@@ -102,7 +99,7 @@ extern "C" {
 
 // Max Player Name length
 
-#define MAXPLAYERNAMELENGTH 11
+#define MAXPLAYERNAMELENGTH 32
 
 // Max RTS Name length
 
@@ -220,8 +217,4 @@ enum
 #define MaxFOV 145
 #define IncFOV 5
 
-#ifdef __cplusplus
-};
 #endif
-#endif
-

@@ -254,11 +254,11 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  vec4 currentFramePosition;\n"
         "  vec4 nextFramePosition;\n"
         "\n"
-        "  currentFramePosition = curVertex * (1.0 - frameProgress);\n"
+        "  currentFramePosition = curVertex * -(frameProgress - 1.0);\n"
         "  nextFramePosition = nextFrameData * frameProgress;\n"
         "  curVertex = currentFramePosition + nextFramePosition;\n"
         "\n"
-        "  currentFramePosition = vec4(curNormal, 1.0) * (1.0 - frameProgress);\n"
+        "  currentFramePosition = vec4(curNormal, 1.0) * -(frameProgress - 1.0);\n"
         "  nextFramePosition = nextFrameNormal * frameProgress;\n"
         "  curNormal = vec3(currentFramePosition + nextFramePosition);\n"
         "\n",
@@ -274,9 +274,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         // vert_prog
         "",
         // frag_def
-        "",
+        "#define PR_LIGHTING_PASS\n"
+        "\n",
         // frag_prog
-        "  isLightingPass = 1;\n"
         "  result = vec4(0.0, 0.0, 0.0, 1.0);\n"
         "\n",
     },
@@ -288,18 +288,20 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "attribute vec3 N;\n"
         "uniform vec3 eyePosition;\n"
         "varying vec3 tangentSpaceEyeVec;\n"
+        "\n"
+        "#define PR_USE_NORMAL_MAP\n"
         "\n",
         // vert_prog
         "  TBN = mat3(T, B, N);\n"
         "  tangentSpaceEyeVec = eyePosition - vec3(curVertex);\n"
         "  tangentSpaceEyeVec = TBN * tangentSpaceEyeVec;\n"
-        "\n"
-        "  isNormalMapped = 1;\n"
         "\n",
         // frag_def
         "uniform sampler2D normalMap;\n"
         "uniform vec2 normalBias;\n"
         "varying vec3 tangentSpaceEyeVec;\n"
+        "\n"
+        "#define PR_USE_NORMAL_MAP\n"
         "\n",
         // frag_prog
         "  vec4 normalStep;\n"
@@ -314,8 +316,6 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  }\n"
         "\n"
         "  normalTexel = texture2D(normalMap, commonTexCoord.st);\n"
-        "\n"
-        "  isNormalMapped = 1;\n"
         "\n",
     },
     {
@@ -337,24 +337,19 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "\n",
         // frag_prog
 
-        "  float shadeLookup = length(horizDistance) / 1.024 * visibility;\n"
-        "  shadeLookup = shadeLookup + shadeOffset;\n"
-        "\n"
+        "  float shadeLookup = length(horizDistance) * (1.0 / 1.024) * visibility + shadeOffset;\n"
         "  float colorIndex = texture2D(artMap, commonTexCoord.st).r * 256.0;\n"
         "  float colorIndexNear = texture2DRect(lookupMap, vec2(colorIndex, floor(shadeLookup))).r;\n"
         "  float colorIndexFar = texture2DRect(lookupMap, vec2(colorIndex, floor(shadeLookup + 1.0))).r;\n"
         "  float colorIndexFullbright = texture2DRect(lookupMap, vec2(colorIndex, 0.0)).r;\n"
-        "\n"
         "  vec3 texelNear = texture2D(basePalMap, vec2(colorIndexNear, 0.5)).rgb;\n"
         "  vec3 texelFar = texture2D(basePalMap, vec2(colorIndexFar, 0.5)).rgb;\n"
         "  diffuseTexel.rgb = texture2D(basePalMap, vec2(colorIndexFullbright, 0.5)).rgb;\n"
         "\n"
-        "  if (isLightingPass == 0) {\n"
-        "    result.rgb = mix(texelNear, texelFar, fract(shadeLookup));\n"
-        "    result.a = 1.0;\n"
-        "    if (colorIndex == 256.0)\n"
-        "      result.a = 0.0;\n"
-        "  }\n"
+        "#ifndef PR_LIGHTING_PASS\n"
+        "  result.rgb = mix(texelNear, texelFar, fract(shadeLookup));\n"
+        "  result.a = float(colorIndex != 256.0);\n"
+        "#endif\n"
         "\n",
     },
     {
@@ -380,18 +375,20 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "\n",
         // vert_prog
         "  fragDetailScale = detailScale;\n"
-        "  if (isNormalMapped == 0)\n"
-        "    gl_TexCoord[1] = vec4(detailScale, 1.0, 1.0) * gl_MultiTexCoord0;\n"
+        "#ifndef PR_USE_NORMAL_MAP\n"
+        "  gl_TexCoord[1] = vec4(detailScale, 1.0, 1.0) * gl_MultiTexCoord0;\n"
+        "#endif\n"
         "\n",
         // frag_def
         "uniform sampler2D detailMap;\n"
         "varying vec2 fragDetailScale;\n"
         "\n",
         // frag_prog
-        "  if (isNormalMapped == 0)\n"
-        "    diffuseTexel *= texture2D(detailMap, gl_TexCoord[1].st);\n"
-        "  else\n"
-        "    diffuseTexel *= texture2D(detailMap, commonTexCoord.st * fragDetailScale);\n"
+        "#ifndef PR_USE_NORMAL_MAP\n"
+        "  diffuseTexel *= texture2D(detailMap, gl_TexCoord[1].st);\n"
+        "#else\n"
+        "  diffuseTexel *= texture2D(detailMap, commonTexCoord.st * fragDetailScale);\n"
+        "#endif\n"
         "  diffuseTexel.rgb *= 2.0;\n"
         "\n",
     },
@@ -405,8 +402,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         // frag_def
         "",
         // frag_prog
-        "  if (isLightingPass == 0)\n"
-        "    result *= vec4(gl_Color);\n"
+        "#ifndef PR_LIGHTING_PASS\n"
+        "  result *= vec4(gl_Color);\n"
+        "#endif\n"
         "\n",
     },
     {
@@ -418,8 +416,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         // frag_def
         "",
         // frag_prog
-        "  if (isLightingPass == 0)\n"
-        "    result *= diffuseTexel;\n"
+        "#ifndef PR_LIGHTING_PASS\n"
+        "  result *= diffuseTexel;\n"
+        "#endif\n"
         "\n",
     },
     {
@@ -435,8 +434,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  float highPalScale = 0.9921875; // for 6 bits\n"
         "  float highPalBias = 0.00390625;\n"
         "\n"
-        "  if (isLightingPass == 0)\n"
-        "    result.rgb = texture3D(highPalookupMap, result.rgb * highPalScale + highPalBias).rgb;\n"
+        "#ifndef PR_LIGHTING_PASS\n"
+        "  result.rgb = texture3D(highPalookupMap, result.rgb * highPalScale + highPalBias).rgb;\n"
+        "#endif\n"
         "  diffuseTexel.rgb = texture3D(highPalookupMap, diffuseTexel.rgb * highPalScale + highPalBias).rgb;\n"
         "\n",
     },
@@ -448,11 +448,11 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "",
         // frag_def
         "uniform sampler2D specMap;\n"
+        "\n"
+        "#define PR_USE_SPECULAR_MAP\n"
         "\n",
         // frag_prog
         "  specTexel = texture2D(specMap, commonTexCoord.st);\n"
-        "\n"
-        "  isSpecularMapped = 1;\n"
         "\n",
     },
     {
@@ -478,15 +478,12 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "uniform sampler2DRect mirrorMap;\n"
         "\n",
         // frag_prog
-        "  vec4 mirrorTexel;\n"
-        "  vec2 mirrorCoords;\n"
-        "\n"
-        "  mirrorCoords = gl_FragCoord.st;\n"
-        "  if (isNormalMapped == 1) {\n"
-        "    mirrorCoords += 100.0 * (normalTexel.rg - 0.5);\n"
-        "  }\n"
-        "  mirrorTexel = texture2DRect(mirrorMap, mirrorCoords);\n"
-        "  result = vec4((result.rgb * (1.0 - specTexel.a)) + (mirrorTexel.rgb * specTexel.rgb * specTexel.a), result.a);\n"
+        "  vec2 mirrorCoords = gl_FragCoord.st;\n"
+        "#ifdef PR_USE_NORMAL_MAP\n"
+        "  mirrorCoords += 100.0 * (normalTexel.rg - 0.5);\n"
+        "#endif\n"
+        "  vec4 mirrorTexel = texture2DRect(mirrorMap, mirrorCoords);\n"
+        "  result = vec4((result.rgb * -(specTexel.a - 1.0)) + (mirrorTexel.rgb * specTexel.rgb * specTexel.a), result.a);\n"
         "\n",
     },
     {
@@ -501,10 +498,8 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
 #endif
         "",
         // frag_prog
-        "  float fragDepth;\n"
         "  float fogFactor;\n"
-        "\n"
-        "  fragDepth = gl_FragCoord.z / gl_FragCoord.w;\n"
+        "  float fragDepth = gl_FragCoord.z / gl_FragCoord.w;\n"
 #ifdef PR_LINEAR_FOG
         "  if (!linearFog) {\n"
 #endif
@@ -529,10 +524,8 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "uniform sampler2D glowMap;\n"
         "\n",
         // frag_prog
-        "  vec4 glowTexel;\n"
-        "\n"
-        "  glowTexel = texture2D(glowMap, commonTexCoord.st);\n"
-        "  result = vec4((result.rgb * (1.0 - glowTexel.a)) + (glowTexel.rgb * glowTexel.a), result.a);\n"
+        "  vec4 glowTexel = texture2D(glowMap, commonTexCoord.st);\n"
+        "  result = vec4((result.rgb * -(glowTexel.a - 1.0)) + (glowTexel.rgb * glowTexel.a), result.a);\n"
         "\n",
     },
     {
@@ -583,11 +576,11 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         // frag_def
         "uniform vec3 spotDir;\n"
         "uniform vec2 spotRadius;\n"
+        "#define PR_SPOTLIGHT\n"
         "\n",
         // frag_prog
         "  spotVector = spotDir;\n"
         "  spotCosRadius = spotRadius;\n"
-        "  isSpotLight = 1;\n"
         "\n",
     },
     {
@@ -599,17 +592,16 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "varying vec3 tangentSpaceLightVector;\n"
         "\n",
         // vert_prog
-        "  vec3 vertexPos;\n"
-        "\n"
-        "  vertexPos = vec3(gl_ModelViewMatrix * curVertex);\n"
+        "  vec3 vertexPos = vec3(gl_ModelViewMatrix * curVertex);\n"
         "  eyeVector = -vertexPos;\n"
         "  lightVector = gl_LightSource[0].ambient.rgb - vertexPos;\n"
         "\n"
-        "  if (isNormalMapped == 1) {\n"
-        "    tangentSpaceLightVector = gl_LightSource[0].specular.rgb - vec3(curVertex);\n"
-        "    tangentSpaceLightVector = TBN * tangentSpaceLightVector;\n"
-        "  } else\n"
-        "    vertexNormal = normalize(gl_NormalMatrix * curNormal);\n"
+        "#ifdef PR_USE_NORMAL_MAP\n"
+        "  tangentSpaceLightVector = gl_LightSource[0].specular.rgb - vec3(curVertex);\n"
+        "  tangentSpaceLightVector = TBN * tangentSpaceLightVector;\n"
+        "#else\n"
+        "  vertexNormal = normalize(gl_NormalMatrix * curNormal);\n"
+        "#endif\n"
         "\n",
         // frag_def
         "varying vec3 vertexNormal;\n"
@@ -618,47 +610,35 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "varying vec3 tangentSpaceLightVector;\n"
         "\n",
         // frag_prog
-        "  float pointLightDistance;\n"
-        "  float lightAttenuation;\n"
-        "  float spotAttenuation;\n"
-        "  vec3 N, L, E, R, D;\n"
-        "  vec3 lightDiffuse;\n"
-        "  float lightSpecular;\n"
-        "  float NdotL;\n"
-        "  float spotCosAngle;\n"
+        "  vec3 L = normalize(lightVector);\n"
+        "  float pointLightDistance = dot(lightVector,lightVector);\n"
+        "  float lightAttenuation = clamp(-(gl_LightSource[0].linearAttenuation * pointLightDistance - 1.0), 0.0, 1.0);\n"
+        "  float spotAttenuation = 1.0;\n"
         "\n"
-        "  L = normalize(lightVector);\n"
+        "#ifdef PR_SPOTLIGHT\n"
+        "  float spotCosAngle = dot(-L, normalize(spotVector));\n"
+        "  spotAttenuation = clamp((spotCosAngle - spotCosRadius.x) * spotCosRadius.y, 0.0, 1.0);\n"
+        "#endif\n"
+        "#ifdef PR_USE_NORMAL_MAP\n"
+        "  vec3 E = eyeVec;\n"
+        "  vec3 N = normalize(2.0 * (normalTexel.rgb - 0.5));\n"
+        "  L = normalize(tangentSpaceLightVector);\n"
+        "#else\n"
+        "  vec3 E = normalize(eyeVector);\n"
+        "  vec3 N = normalize(vertexNormal);\n"
+        "#endif\n"
         "\n"
-        "  pointLightDistance = dot(lightVector,lightVector);\n"
-        "  lightAttenuation = clamp(1.0 - pointLightDistance * gl_LightSource[0].linearAttenuation, 0.0, 1.0);\n"
-        "  spotAttenuation = 1.0;\n"
-        "\n"
-        "  if (isSpotLight == 1) {\n"
-        "    D = normalize(spotVector);\n"
-        "    spotCosAngle = dot(-L, D);\n"
-        "    spotAttenuation = clamp((spotCosAngle - spotCosRadius.x) * spotCosRadius.y, 0.0, 1.0);\n"
-        "  }\n"
-        "\n"
-        "  if (isNormalMapped == 1) {\n"
-        "    E = eyeVec;\n"
-        "    N = normalize(2.0 * (normalTexel.rgb - 0.5));\n"
-        "    L = normalize(tangentSpaceLightVector);\n"
-        "  } else {\n"
-        "    E = normalize(eyeVector);\n"
-        "    N = normalize(vertexNormal);\n"
-        "  }\n"
-        "  NdotL = max(dot(N, L), 0.0);\n"
-        "\n"
-        "  R = reflect(-L, N);\n"
-        "\n"
-        "  lightDiffuse = gl_Color.a * shadowResult * lightTexel *\n"
+        "  float NdotL = max(dot(N, L), 0.0);\n"
+        "  vec3 R = reflect(-L, N);\n"
+        "  vec3 lightDiffuse = gl_Color.a * shadowResult * lightTexel *\n"
         "                 gl_LightSource[0].diffuse.rgb * lightAttenuation * spotAttenuation;\n"
         "  result += vec4(lightDiffuse * diffuseTexel.a * diffuseTexel.rgb * NdotL, 0.0);\n"
         "\n"
-        "  if (isSpecularMapped == 0)\n"
-        "    specTexel.rgb = diffuseTexel.rgb * diffuseTexel.a;\n"
+        "#ifndef PR_USE_SPECULAR_MAP\n"
+        "  specTexel.rgb = diffuseTexel.rgb * diffuseTexel.a;\n"
+        "#endif\n"
         "\n"
-        "  lightSpecular = pow( max(dot(R, E), 0.0), specularMaterial.x * specTexel.a) * specularMaterial.y;\n"
+        "  float lightSpecular = pow( max(dot(R, E), 0.0), specularMaterial.x * specTexel.a) * specularMaterial.y;\n"
         "  result += vec4(lightDiffuse * specTexel.rgb * lightSpecular, 0.0);\n"
         "\n",
     },
@@ -669,7 +649,6 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "{\n"
         "  vec4 curVertex = gl_Vertex;\n"
         "  vec3 curNormal = gl_Normal;\n"
-        "  int isNormalMapped = 0;\n"
         "  mat3 TBN;\n"
         "\n"
         "  gl_TexCoord[0] = gl_MultiTexCoord0;\n"
@@ -678,6 +657,9 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  gl_Position = gl_ModelViewProjectionMatrix * curVertex;\n"
         "}\n",
         // frag_def
+        "uniform vec4 u_colorCorrection;\n"
+        "const vec4 c_vec4_luma_709 = vec4(0.2126, 0.7152, 0.0722, 0.0);\n"
+        "const vec2 c_vec2_zero_one = vec2(0.0, 1.0);\n"
         "void main(void)\n"
         "{\n"
         "  vec3 commonTexCoord = vec3(gl_TexCoord[0].st, 0.0);\n"
@@ -685,11 +667,7 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  vec4 diffuseTexel = vec4(1.0, 1.0, 1.0, 1.0);\n"
         "  vec4 specTexel = vec4(1.0, 1.0, 1.0, 1.0);\n"
         "  vec4 normalTexel;\n"
-        "  int isLightingPass = 0;\n"
-        "  int isNormalMapped = 0;\n"
-        "  int isSpecularMapped = 0;\n"
         "  vec3 eyeVec;\n"
-        "  int isSpotLight = 0;\n"
         "  vec3 spotVector;\n"
         "  vec2 spotCosRadius;\n"
         "  float shadowResult = 1.0;\n"
@@ -697,7 +675,17 @@ static const _prprogrambit   prprogrambits[PR_BIT_COUNT] = {
         "  vec3 lightTexel = vec3(1.0, 1.0, 1.0);\n"
         "\n",
         // frag_prog
-        "  gl_FragColor = result;\n"
+        "  vec4 v_cc = vec4(u_colorCorrection.x - 1.0, 0.5 * -(u_colorCorrection.y - 1.0), -(u_colorCorrection.z - 1.0), 1.0);\n"
+        "  gl_FragColor =\n"
+        "               mat4(c_vec2_zero_one.yxxx, c_vec2_zero_one.xyxx, c_vec2_zero_one.xxyx, v_cc.xxxw) *\n"
+        "#ifndef PR_LIGHTING_PASS\n"
+        "               mat4(u_colorCorrection.ywww, u_colorCorrection.wyww, u_colorCorrection.wwyw, v_cc.yyyw) *\n"
+        "#endif\n"
+        "               mat4((c_vec4_luma_709.xxxw * v_cc.z) + u_colorCorrection.zwww,\n"
+        "                      (c_vec4_luma_709.yyyw * v_cc.z) + u_colorCorrection.wzww,\n"
+        "                      (c_vec4_luma_709.zzzw * v_cc.z) + u_colorCorrection.wwzw,\n"
+        "                      c_vec2_zero_one.xxxy) *\n"
+        "               result;\n"
         "}\n",
     }
 };
@@ -720,7 +708,7 @@ GLfloat         *curskymodelviewmatrix;
 
 static int16_t  sectorqueue[MAXSECTORS];
 static GLuint   queryid[MAXWALLS];
-static uint8_t  drawingstate[(MAXSECTORS+7)>>3];
+static uint8_t  drawingstate[bitmap_size(MAXSECTORS)];
 
 int16_t         *cursectormasks;
 int16_t         *cursectormaskcount;
@@ -1372,7 +1360,7 @@ void                polymer_editorpick(void)
             GLfloat bestwdistsq = (GLfloat)3.4e38, wdistsq;
             GLfloat w1[2], w2[2], w21[2], pw1[2], pw2[2];
             walltype *wal = &wall[sector[searchsector].wallptr];
-            
+
             GLfloat dadepth;
             glReadPixels(searchx, ydim-searchy, 1,1, GL_DEPTH_COMPONENT, GL_FLOAT, &dadepth);
             GLfloat x,y,z;
@@ -1428,7 +1416,7 @@ void                polymer_editorpick(void)
                         continue;
 
                     GLfloat scrpxz[2];
-                    GLfloat ptonline[2] = { w2[0]+(w2d/(w1d+w2d))*w21[0], 
+                    GLfloat ptonline[2] = { w2[0]+(w2d/(w1d+w2d))*w21[0],
                                             w2[1]+(w2d/(w1d+w2d))*w21[1] };
                     relvec2f(p,ptonline, scrpxz);
                     if (dot2f(scrvxz,scrpxz)<0)
@@ -1486,7 +1474,7 @@ static void         polymer_setupdiffusemodulation(_prplane *plane, GLubyte modu
     plane->material.diffusemodulation[3] = 0xFF;
 }
 
-static void         polymer_drawsearchplane(_prplane *plane, GLubyte *oldcolor, GLubyte modulation, GLubyte *data)
+static void         polymer_drawsearchplane(_prplane *plane, GLubyte *oldcolor, GLubyte modulation, GLubyte const *data)
 {
     Bmemcpy(oldcolor, plane->material.diffusemodulation, sizeof(GLubyte) * 4);
 
@@ -1499,23 +1487,28 @@ static void         polymer_drawsearchplane(_prplane *plane, GLubyte *oldcolor, 
 
 void                polymer_drawmaskwall(int32_t damaskwallcnt)
 {
-    usectorptr_t      sec;
-    walltype        *wal;
-    _prwall         *w;
     GLubyte         oldcolor[4];
 
     if (pr_verbosity >= 3) VLOG_F(LOG_PR, "Masked wall %i", damaskwallcnt);
 
-    sec = (usectorptr_t)&sector[wallsect[maskwall[damaskwallcnt]]];
-    wal = &wall[maskwall[damaskwallcnt]];
-    w = prwalls[maskwall[damaskwallcnt]];
+    int16_t const wallnum = maskwall[damaskwallcnt];
+
+    auto sec = (usectorptr_t)&sector[wallsect[wallnum]];
+    auto wal = &wall[wallnum];
+    auto w   = prwalls[wallnum];
 
     buildgl_setEnabled(GL_CULL_FACE);
 
     if (searchit == 2) {
-        polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte *)&maskwall[damaskwallcnt]);
+        polymer_drawsearchplane(&w->mask, oldcolor, 0x04, (GLubyte const *)&wallnum);
     } else {
         calc_and_apply_fog(fogshade(wal->shade, wal->pal), sec->visibility, get_floor_fogpal(sec));
+#ifdef NEW_MAP_FORMAT
+        uint8_t const blend = wal->blend;
+#else
+        uint8_t const blend = wallext[wallnum].blend;
+#endif
+        handle_blend(!!(wal->cstat & CSTAT_WALL_TRANSLUCENT), blend, !!(wal->cstat & CSTAT_WALL_TRANS_FLIP));
         polymer_drawplane(&w->mask);
     }
 
@@ -1535,10 +1528,12 @@ void                polymer_drawsprite(int32_t snum)
     if (bad_tspr(tspr))
         return;
 
-    if ((tspr->clipdist & TSPR_FLAGS_NO_SHADOW) && (depth && !mirrors[depth-1].plane))
+    auto const tsprflags = tspr->clipdist;
+
+    if ((tsprflags & TSPR_FLAGS_NO_SHADOW) && (depth && !mirrors[depth-1].plane))
         return;
 
-    if ((tspr->clipdist & TSPR_FLAGS_INVISIBLE_WITH_SHADOW) && (!depth || mirrors[depth-1].plane))
+    if ((tsprflags & TSPR_FLAGS_INVISIBLE_WITH_SHADOW) && (!depth || mirrors[depth-1].plane))
         return;
 
     int const spritenum = tspr->owner;
@@ -1548,10 +1543,14 @@ void                polymer_drawsprite(int32_t snum)
 
     sec = (usectorptr_t)&sector[tspr->sectnum];
     calc_and_apply_fog(fogshade(tspr->shade, tspr->pal), sec->visibility, get_floor_fogpal((usectorptr_t)&sector[tspr->sectnum]));
+    handle_blend(!!(tspr->cstat & CSTAT_SPRITE_TRANSLUCENT), tspr->blend, !!(tspr->cstat & CSTAT_SPRITE_TRANSLUCENT_INVERT));
 
-    if (usemodels && tile2model[Ptile2tile(tspr->picnum,tspr->pal)].modelid >= 0 &&
-        tile2model[Ptile2tile(tspr->picnum,tspr->pal)].framenum >= 0 &&
-        !(spriteext[spritenum].flags & SPREXT_NOTMD))
+    int32_t pTile = Ptile2tile(tspr->picnum,tspr->pal);
+
+    if (usemodels && tile2model[pTile].modelid >= 0 &&
+        tile2model[pTile].framenum >= 0 &&
+        !(spriteext[spritenum].flags & SPREXT_NOTMD) &&
+        models[tile2model[pTile].modelid]->mdnum != 1)
     {
         buildgl_setEnabled(GL_CULL_FACE);
         SWITCH_CULL_DIRECTION;
@@ -1586,21 +1585,22 @@ void                polymer_drawsprite(int32_t snum)
     if (s == NULL)
         return;
 
-    switch ((tspr->cstat>>4) & 3)
+    switch (cs & CSTAT_SPRITE_ALIGNMENT)
     {
-    case 1:
+    case CSTAT_SPRITE_ALIGNMENT_WALL:
         prsectors[tspr->sectnum]->wallsproffset += 0.5f;
         if (!depth || mirrors[depth-1].plane)
             glPolygonOffset(-(1.f/min(2048, sepldist(globalposx-tspr->x, globalposy-tspr->y)>>2)), -64);
         break;
-    case 2:
+    case CSTAT_SPRITE_ALIGNMENT_FLOOR:
+    case CSTAT_SPRITE_ALIGNMENT_SLOPE:
         prsectors[tspr->sectnum]->floorsproffset += 0.5f;
         if (!depth || mirrors[depth-1].plane)
             glPolygonOffset(-(1.f/min(2048, sepdist(globalposx-tspr->x, globalposy-tspr->y, globalposz-tspr->z)>>5)), -64);
         break;
     }
 
-    if ((cs & 48) == 0)
+    if ((cs & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING)
     {
         int32_t curpriority = 0;
 
@@ -1629,11 +1629,11 @@ void                polymer_drawsprite(int32_t snum)
     }
 
     if (automapping == 1)
-        show2dsprite[spritenum>>3] |= pow2char[spritenum&7];
+        bitmap_set(show2dsprite, spritenum);
 
-    if ((tspr->cstat & 64) && (tspr->cstat & SPR_ALIGN_MASK))
+    if ((tspr->cstat & 64) && (tspr->cstat & CSTAT_SPRITE_ALIGNMENT))
     {
-        if ((tspr->cstat & SPR_ALIGN_MASK)==SPR_FLOOR && (tspr->cstat & SPR_YFLIP))
+        if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR) && (tspr->cstat & CSTAT_SPRITE_YFLIP))
             SWITCH_CULL_DIRECTION;
         buildgl_setEnabled(GL_CULL_FACE);
     }
@@ -1646,9 +1646,9 @@ void                polymer_drawsprite(int32_t snum)
     if ((!depth || mirrors[depth-1].plane) && !pr_ati_nodepthoffset)
         buildgl_setDisabled(GL_POLYGON_OFFSET_FILL);
 
-    if ((tspr->cstat & 64) && (tspr->cstat & SPR_ALIGN_MASK))
+    if ((tspr->cstat & 64) && (tspr->cstat & CSTAT_SPRITE_ALIGNMENT))
     {
-        if ((tspr->cstat & SPR_ALIGN_MASK)==SPR_FLOOR && (tspr->cstat & SPR_YFLIP))
+        if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR) && (tspr->cstat & CSTAT_SPRITE_YFLIP))
             SWITCH_CULL_DIRECTION;
         buildgl_setDisabled(GL_CULL_FACE);
     }
@@ -1808,8 +1808,10 @@ static void         polymer_displayrooms(const int16_t dacursectnum)
 {
     usectorptr_t      sec;
     int32_t         i;
+#ifdef YAX_ENABLE
     int16_t         bunchnum;
     int16_t         ns;
+#endif
     GLint           result;
     int16_t         doquery;
     int32_t         front;
@@ -2739,7 +2741,7 @@ static int32_t      polymer_updatesector(int16_t sectnum)
     }
     while (i < sec->wallnum);
 
-    if (needfloor || 
+    if (needfloor ||
             (s->flags.empty) ||
             (sec->floorz != s->floorz) ||
             (sec->ceilingz != s->ceilingz) ||
@@ -3113,9 +3115,9 @@ static void polymer_drawsector(int16_t sectnum, int32_t domasks)
     if (pr_verbosity >= 3) VLOG_F(LOG_PR, "Drawing sector %i", sectnum);
 
     if (automapping)
-        show2dsector[sectnum>>3] |= pow2char[sectnum&7];
+        bitmap_set(show2dsector, sectnum);
 
-    gotsector[sectnum>>3] |= pow2char[sectnum&7];
+    bitmap_set(gotsector, sectnum);
 
     auto sec        = (usectorptr_t)&sector[sectnum];
     auto s          = prsectors[sectnum];
@@ -3130,9 +3132,12 @@ static void polymer_drawsector(int16_t sectnum, int32_t domasks)
     // Draw masks regardless; avoid all non-masks TROR links
     if (sec->floorstat & 384) {
         draw = domasks;
-    } else if (yax_getbunch(sectnum, YAX_FLOOR) >= 0) {
+    }
+#ifdef YAX_ENABLE
+    else if (yax_getbunch(sectnum, YAX_FLOOR) >= 0) {
         draw = FALSE;
     }
+#endif
 
     // Parallaxed
     if (sec->floorstat & 1) {
@@ -3176,9 +3181,12 @@ static void polymer_drawsector(int16_t sectnum, int32_t domasks)
     // Draw masks regardless; avoid all non-masks TROR links
     if (sec->ceilingstat & 384) {
         draw = domasks;
-    } else if (yax_getbunch(sectnum, YAX_CEILING) >= 0) {
+    }
+#ifdef YAX_ENABLE
+    else if (yax_getbunch(sectnum, YAX_CEILING) >= 0) {
         draw = FALSE;
     }
+#endif
 
     // Parallaxed
     if (sec->ceilingstat & 1) {
@@ -3777,7 +3785,7 @@ static void         polymer_drawwall(int16_t sectnum, int16_t wallnum)
     //}
 
     if (automapping)
-        show2dwall[wallnum>>3] |= pow2char[wallnum&7];
+        bitmap_set(show2dwall, wallnum);
 
     if (pr_verbosity >= 3) VLOG_F(LOG_PR, "Finished drawing wall %i.", wallnum);
 }
@@ -3967,7 +3975,7 @@ static inline void  polymer_scansprites(int16_t sectnum, tspriteptr_t localtspri
         auto spr = (uspriteptr_t)&sprite[i];
         if ((((spr->cstat&0x8000) == 0) || (showinvisibility)) &&
                 (spr->xrepeat > 0) && (spr->yrepeat > 0) &&
-                (*localspritesortcnt < maxspritesonscreen))
+                (*localspritesortcnt < MAXSPRITESONSCREEN))
         {
             // this function's localtsprite is either the tsprite global or
             // polymer_drawroom's locattsprite, so no aliasing
@@ -3988,8 +3996,8 @@ void                polymer_updatesprite(int32_t snum)
     _prsprite       *s;
 
     const uint32_t cs = tspr->cstat;
-    const uint32_t alignmask = (cs & SPR_ALIGN_MASK);
-    const uint8_t flooraligned = (alignmask==SPR_FLOOR);
+    const uint32_t alignmask = (cs & CSTAT_SPRITE_ALIGNMENT);
+    const uint8_t flooraligned = !!(cs & CSTAT_SPRITE_ALIGNMENT_FLOOR);
 
     if (pr_nullrender >= 3) return;
 
@@ -4011,7 +4019,7 @@ void                polymer_updatesprite(int32_t snum)
         s->hash = 0xDEADBEEF;
     }
 
-    if ((tspr->cstat & 48) && !s->plane.vbo)
+    if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT) && !s->plane.vbo)
     {
         if (pr_nullrender < 2)
         {
@@ -4021,7 +4029,7 @@ void                polymer_updatesprite(int32_t snum)
         }
     }
 
-    if (tspr->cstat & 48 && searchit != 2)
+    if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT) && searchit != 2)
     {
         uint32_t const changed = XXH3_64bits((uint8_t *) tspr, offsetof(spritetype, owner));
 
@@ -4051,7 +4059,7 @@ void                polymer_updatesprite(int32_t snum)
         s->hash = 0xDEADBEEF;
     }
 
-    if (((tspr->cstat>>4) & 3) == 0)
+    if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING)
         xratio = (float)(tspr->xrepeat) * 0.20f; // 32 / 160
     else
         xratio = (float)(tspr->xrepeat) * 0.25f;
@@ -4072,9 +4080,9 @@ void                polymer_updatesprite(int32_t snum)
 
     tilexoff = (usehightile && h_xsize[curpicnum]) ? h_xoffs[curpicnum] : picanm[curpicnum].xofs;
     tileyoff = (usehightile && h_xsize[curpicnum]) ? h_yoffs[curpicnum] : picanm[curpicnum].yofs;
-    
+
     heinum = tspriteGetSlope(tspr);
-    
+
     if (heinum == 0)
     {
         tilexoff += (int32_t)tspr->xoffset;
@@ -4086,7 +4094,7 @@ void                polymer_updatesprite(int32_t snum)
 
     if ((tspr->cstat & 128) && !flooraligned)
     {
-        if (alignmask == 0)
+        if (alignmask == CSTAT_SPRITE_ALIGNMENT_FACING)
             yoff -= ysize / 2;
         else
             centeryoff = ysize / 2;
@@ -4103,14 +4111,14 @@ void                polymer_updatesprite(int32_t snum)
     inbuffer = vertsprite;
 
     {
-        const uint8_t xflip = !!(cs & SPR_XFLIP);
-        const uint8_t yflip = !!(cs & SPR_YFLIP);
+        const uint8_t xflip = !!(cs & CSTAT_SPRITE_XFLIP);
+        const uint8_t yflip = !!(cs & CSTAT_SPRITE_YFLIP);
 
         // Initially set flipu and flipv.
         flipu = (xflip ^ flooraligned);
         flipv = (yflip && !flooraligned);
 
-        if (pr_billboardingmode && alignmask==0)
+        if (pr_billboardingmode && alignmask == CSTAT_SPRITE_ALIGNMENT_FACING)
         {
             // do surgery on the face tspr to make it look like a wall sprite
             tspr->cstat |= 16;
@@ -4120,13 +4128,13 @@ void                polymer_updatesprite(int32_t snum)
         if (flipu)
             xoff = -xoff;
 
-        if (yflip && alignmask!=0)
+        if (yflip && alignmask != CSTAT_SPRITE_ALIGNMENT_FACING)
             yoff = -yoff;
     }
 
-    switch (tspr->cstat & SPR_ALIGN_MASK)
+    switch (tspr->cstat & CSTAT_SPRITE_ALIGNMENT)
     {
-    case 0:
+    case CSTAT_SPRITE_ALIGNMENT_FACING:
         ang = (float)((fix16_to_int(viewangle)) & 2047) * (360.f/2048.f);
 
         glTranslatef(spos[0], spos[1], spos[2]);
@@ -4135,7 +4143,7 @@ void                polymer_updatesprite(int32_t snum)
         glTranslatef((float)(-xoff), (float)(yoff), 0.0f);
         glScalef((float)(xsize), (float)(ysize), 1.0f);
         break;
-    case SPR_WALL:
+    case CSTAT_SPRITE_ALIGNMENT_WALL:
         {
             int16_t wallnum = ((unsigned)tspr->owner >= MAXSPRITES) ? -1 : ornament[tspr->owner].wall;
             wallspriteinfo_t *ws = ((unsigned)tspr->owner >= MAXSPRITES) ? nullptr : &ornament[tspr->owner];
@@ -4166,7 +4174,8 @@ void                polymer_updatesprite(int32_t snum)
             glScalef((float)(xsize), (float)(ysize), 1.0f);
             break;
         }
-    case SPR_FLOOR:
+    case CSTAT_SPRITE_ALIGNMENT_FLOOR:
+    case CSTAT_SPRITE_ALIGNMENT_SLOPE:
     {
         float const sang = atan2f(float(heinum), 4096.f) * (180.f * float(M_1_PI));
         ang = (float)((tspr->ang + 1024) & 2047) * (360.f/2048.f);
@@ -4211,7 +4220,7 @@ void                polymer_updatesprite(int32_t snum)
 
     if (pr_nullrender < 2)
     {
-        if (alignmask)
+        if (alignmask != CSTAT_SPRITE_ALIGNMENT_FACING)
         {
             buildgl_bindBuffer(GL_ARRAY_BUFFER, s->plane.vbo);
             glBufferSubData(GL_ARRAY_BUFFER, 0, 4 * sizeof(_prvert), s->plane.buffer);
@@ -4224,7 +4233,7 @@ void                polymer_updatesprite(int32_t snum)
         }
     }
 
-    if (alignmask)
+    if (alignmask != CSTAT_SPRITE_ALIGNMENT_FACING)
     {
         int32_t curpriority = 0;
 
@@ -4336,7 +4345,7 @@ static inline void polymer_drawartskyquad(int32_t p1, int32_t p2, GLfloat height
 static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shade)
 {
     pthtyp*         pth;
-    GLuint          glpics[PSKYOFF_MAX];
+    //GLuint          glpics[PSKYOFF_MAX];
     GLfloat         glcolors[PSKYOFF_MAX][3];
     int32_t         i, j;
     GLfloat         height = 2.45f / 2.0f;
@@ -4358,7 +4367,7 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
         if (!waloff[picnum])
             tileLoad(picnum);
         pth = texcache_fetch(picnum, palnum, 0, DAMETH_NOMASK);
-        glpics[i] = pth ? pth->glpic : 0;
+        //glpics[i] = pth ? pth->glpic : 0;
 
         glcolors[i][0] = glcolors[i][1] = glcolors[i][2] = getshadefactor(shade, palnum);
 
@@ -4386,25 +4395,20 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
 
         i++;
     }
-
-    buildgl_bindBuffer(GL_ARRAY_BUFFER, drawpolyVertsID);
-
-    glVertexPointer(3, GL_FLOAT, 5*sizeof(float), 0);
-    glTexCoordPointer(2, GL_FLOAT, 5*sizeof(float), (GLvoid*) (3*sizeof(float)));
-
     buildgl_setEnabled(GL_TEXTURE_2D);
     i = 0;
     j = 0;
     int32_t const increment = PSKYOFF_MAX>>max(3, dapskybits);  // In Polymer, an ART sky has 8 or 16 sides...
-    buildgl_bindSamplerObject(0, PTH_TEMP_SKY_HACK);
+//    buildgl_bindSamplerObject(0, PTH_TEMP_SKY_HACK);
     while (i < PSKYOFF_MAX)
     {
         // ... but in case a multi-psky specifies less than 8, repeat cyclically:
         const int8_t tileofs = j&numskytilesm1;
-
+        polymer_inb4rotatesprite(tilenum+dapskyoff[tileofs], palnum, shade, DAMETH_CLAMPED);
         glColor4f(glcolors[tileofs][0], glcolors[tileofs][1], glcolors[tileofs][2], 1.0f);
-        buildgl_bindTexture(GL_TEXTURE_2D, glpics[tileofs]);
+        //buildgl_bindTexture(GL_TEXTURE_2D, glpics[tileofs]);
         polymer_drawartskyquad(i, (i + increment) & (PSKYOFF_MAX - 1), height);
+        polymer_postrotatesprite();
 
         i += increment;
         ++j;
@@ -4412,7 +4416,6 @@ static void         polymer_drawartsky(int16_t tilenum, char palnum, int8_t shad
 
     buildgl_bindSamplerObject(0, 0);
     buildgl_setDisabled(GL_TEXTURE_2D);
-    buildgl_bindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shade)
@@ -4434,6 +4437,12 @@ static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shad
     buildgl_bindBuffer(GL_ARRAY_BUFFER, skyboxdatavbo);
 
     tileUpdatePicnum(&tilenum, 0);
+
+    _prmaterial     skymaterial;
+    drawingskybox = 1;
+    polymer_getbuildmaterial(&skymaterial, tilenum, palnum, shade, 0, PTH_HIGHTILE|PTH_CLAMPED);
+    auto skymaterialbits = polymer_bindmaterial(&skymaterial, NULL, 0);
+    buildgl_bindSamplerObject(0, PTH_HIGHTILE|PTH_CLAMPED);
 
     i = 0;
     while (i < 6)
@@ -4477,6 +4486,7 @@ static void         polymer_drawskybox(int16_t tilenum, char palnum, int8_t shad
     }
     drawingskybox = 0;
 
+    polymer_unbindmaterial(skymaterialbits);
     buildgl_bindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
@@ -4507,6 +4517,8 @@ void polymer_drawmdsprite(tspriteptr_t tspr)
     if (m->indices == NULL)
         polymer_loadmodelvbos(m);
 
+    auto const tsprflags = tspr->clipdist;
+
     // Hackish, but that means it's a model drawn by rotatesprite.
     if (tspriteptr[maxspritesonscreen] == tspr) {
         spos[0] = fglobalposy;
@@ -4533,7 +4545,7 @@ void polymer_drawmdsprite(tspriteptr_t tspr)
 
     ang -= 90.0f;
 
-    if (((tspr->cstat>>4) & 3) == 2)
+    if (tspr->cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR)
         ang -= 90.0f;
 
     glMatrixMode(GL_MODELVIEW);
@@ -4541,7 +4553,7 @@ void polymer_drawmdsprite(tspriteptr_t tspr)
     glLoadIdentity();
 
     scale = m->scale * 0.25f;
-    
+
     if (pr_overridemodelscale) {
         scale *= pr_overridemodelscale;
     } else {
@@ -4567,7 +4579,7 @@ void polymer_drawmdsprite(tspriteptr_t tspr)
         glTranslatef(spos[0], spos[1], spos[2]);
         glRotatef(-ang, 0.0f, 1.0f, 0.0f);
     }
-    if (((tspr->cstat>>4) & 3) == 2)
+    if (tspr->cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR)
     {
         glTranslatef(0.0f, 0.0, -(float)(tilesiz[tspr->picnum].y * tspr->yrepeat) / 8.0f);
         glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
@@ -4575,7 +4587,7 @@ void polymer_drawmdsprite(tspriteptr_t tspr)
     else
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
 
-    if ((tspr->cstat & 128) && (((tspr->cstat>>4) & 3) != 2))
+    if ((tspr->cstat & 128) && !(tspr->cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR))
         glTranslatef(0.0f, 0.0, -(float)(tilesiz[tspr->picnum].y * tspr->yrepeat) / 8.0f);
 
     // yoffset differs from zadd in that it does not follow cstat&8 y-flipping
@@ -4826,7 +4838,7 @@ void polymer_drawmdsprite(tspriteptr_t tspr)
         if (!mdspritematerial.diffusemap)
             continue;
 
-        if (!(tspr->clipdist & TSPR_FLAGS_MDHACK))
+        if (!(tsprflags & TSPR_FLAGS_MDHACK))
         {
             mdspritematerial.detailmap =
                     mdloadskin((md2model_t *)m,tile2model[Ptile2tile(tspr->picnum,lpal)].skinnum,DETAILPAL,surfi);
@@ -5323,7 +5335,11 @@ static int32_t      polymer_bindmaterial(const _prmaterial *material, const int1
         if (prlights[lights[curlight]].publicflags.negative) {
             glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
         }
+
+        glUniform4f(prprogram.uniform_colorCorrection, min(1.0f, g_glColorCorrection.x), g_glColorCorrection.y, g_glColorCorrection.z, g_glColorCorrection.w);
     }
+    else
+        glUniform4f(prprogram.uniform_colorCorrection, g_glColorCorrection.x, g_glColorCorrection.y, g_glColorCorrection.z, g_glColorCorrection.w);
 
     // PR_BIT_NORMAL_MAP
     if (programbits & (1 << PR_BIT_NORMAL_MAP))
@@ -5779,6 +5795,8 @@ static _prprograminfo *polymer_compileprogram(int32_t programbits)
 
     // --------- ATTRIBUTE/UNIFORM LOCATIONS
 
+    prprogram.uniform_colorCorrection = glGetUniformLocation(program, "u_colorCorrection");
+
     if (programbits & (1 << PR_BIT_ANIM_INTERPOLATION))
     {
         prprogram.attrib_nextFrameData   = glGetAttribLocation(program, "nextFrameData");
@@ -5873,7 +5891,7 @@ static void         polymer_updatelights(void)
 
             if (light->radius)
                 polymer_processspotlight(light);
-            
+
             if (!polymer_culllight(i))
                 light->flags.invalidate = 0;
         }
@@ -5962,8 +5980,7 @@ out:
 
 static FORCE_INLINE void polymer_deleteplanelight(_prplane *const plane, int16_t const lighti)
 {
-    int i = plane->lightcount - 1;
-    do
+    for (int i = plane->lightcount - 1; i >= 0; --i)
     {
         if (plane->lights[i] == lighti)
         {
@@ -5972,7 +5989,6 @@ static FORCE_INLINE void polymer_deleteplanelight(_prplane *const plane, int16_t
             return;
         }
     }
-    while (--i >= 0);
 }
 
 static int polymer_planeinlight(_prplane const &plane, _prlight const &light)
@@ -6089,7 +6105,9 @@ static int polymer_culllight(int16_t lighti)
 
     int32_t front = 0;
     int32_t back  = 1;
+#ifdef YAX_ENABLE
     int16_t bunchnum;
+#endif
 
     if (!sectorsareconnected(globalcursectnum, light.sector)) return 1;
 
@@ -6104,7 +6122,9 @@ static int polymer_culllight(int16_t lighti)
 
         polymer_pokesector(sectorqueue[front]);
 
+#ifdef YAX_ENABLE
         int checkror = FALSE;
+#endif
 
         if (!(sec->floorstat & 1))
         {
@@ -6116,11 +6136,15 @@ static int polymer_culllight(int16_t lighti)
             if (!light.radius) {
                 if (zdiff < light.range) {
                     polymer_addplanelight(&s->floor, lighti);
+#ifdef YAX_ENABLE
                     checkror = TRUE;
+#endif
                 }
             } else if (polymer_planeinlight(s->floor, light)) {
                 polymer_addplanelight(&s->floor, lighti);
+#ifdef YAX_ENABLE
                 checkror = TRUE;
+#endif
             }
         }
 
@@ -6139,8 +6163,8 @@ static int polymer_culllight(int16_t lighti)
                 }
             }
         }
-#endif
         checkror = FALSE;
+#endif
 
         if (!(sec->ceilingstat & 1))
         {
@@ -6152,11 +6176,15 @@ static int polymer_culllight(int16_t lighti)
             if (!light.radius) {
                 if (zdiff < light.range) {
                     polymer_addplanelight(&s->ceil, lighti);
+#ifdef YAX_ENABLE
                     checkror = TRUE;
+#endif
                 }
             } else if (polymer_planeinlight(s->ceil, light)) {
                 polymer_addplanelight(&s->ceil, lighti);
+#ifdef YAX_ENABLE
                 checkror = TRUE;
+#endif
             }
         }
 
@@ -6231,9 +6259,9 @@ static int polymer_culllight(int16_t lighti)
         {
             _prsprite *s = prsprites[i];
 
-            if ((sprite[i].cstat & 48) == 0 || s == NULL)
+            if ((sprite[i].cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING || s == NULL)
                 continue;
-        
+
             if (polymer_planeinlight(s->plane, light))
                 polymer_addplanelight(&s->plane, lighti);
         }

@@ -207,7 +207,7 @@ void scrLoadPalette(void)
     paletteInitClosestColorScale(30, 59, 11);
     paletteInitClosestColorGrid();
     paletteloaded = 0;
-    initprintf("Loading palettes\n");
+    LOG_F(INFO, "Loading palettes");
     for (int i = 0; i < 5; i++)
     {
         DICTNODE *pPal = gSysRes.Lookup(PAL[i].name, "PAL");
@@ -221,7 +221,7 @@ void scrLoadPalette(void)
     paletteloaded |= PALETTE_MAIN;
     scrLoadPLUs();
     paletteloaded |= PALETTE_SHADE;
-    initprintf("Loading translucency table\n");
+    LOG_F(INFO, "Loading translucency table");
     DICTNODE *pTrans = gSysRes.Lookup("TRANS", "TLU");
     if (!pTrans)
         ThrowError("TRANS.TLU not found");
@@ -281,32 +281,32 @@ void scrSetupUnfade(void)
 
 void scrFadeAmount(int amount)
 {
-	for (int i = 0; i < 256; i++)
-	{
-		curDAC[i].red = interpolate(fromDAC[i].red, toRGB.red, amount);
+    for (int i = 0; i < 256; i++)
+    {
+        curDAC[i].red = interpolate(fromDAC[i].red, toRGB.red, amount);
         curDAC[i].green = interpolate(fromDAC[i].green, toRGB.green, amount);
         curDAC[i].blue = interpolate(fromDAC[i].blue, toRGB.blue, amount);
-	}
-	gSetDacRange(0, 256, curDAC);
+    }
+    gSetDacRange(0, 256, curDAC);
 }
 
 void scrSetDac(void)
 {
-	if (DacInvalid)
-		gSetDacRange(0, 256, baseDAC);
-	DacInvalid = 0;
+    if (DacInvalid)
+        gSetDacRange(0, 256, baseDAC);
+    DacInvalid = 0;
 }
 
 void scrInit(void)
 {
-    initprintf("Initializing engine\n");
+    LOG_F(INFO, "Initializing engine");
 #ifdef USE_OPENGL
     glrendmode = REND_POLYMOST;
 #endif
     engineInit();
     curPalette = 0;
     curGamma = 0;
-    initprintf("Loading gamma correction table\n");
+    LOG_F(INFO, "Loading gamma correction table");
     DICTNODE *pGamma = gSysRes.Lookup("gamma", "DAT");
     if (!pGamma)
         ThrowError("Gamma table not found");
@@ -328,7 +328,7 @@ void scrSetGameMode(int vidMode, int XRes, int YRes, int nBits)
     //videoSetGameMode(vidMode, XRes, YRes, nBits, 0);
     if (videoSetGameMode(vidMode, XRes, YRes, nBits, 0) < 0)
     {
-        initprintf("Failure setting video mode %dx%dx%d %s! Trying next mode...\n", XRes, YRes,
+        LOG_F(ERROR, "Failure setting video mode %dx%dx%d %s! Trying next mode...", XRes, YRes,
                     nBits, vidMode ? "fullscreen" : "windowed");
 
         int resIdx = 0;
@@ -347,7 +347,7 @@ void scrSetGameMode(int vidMode, int XRes, int YRes, int nBits)
 
         while (videoSetGameMode(0, validmode[resIdx].xdim, validmode[resIdx].ydim, bpp, 0) < 0)
         {
-            initprintf("Failure setting video mode %dx%dx%d windowed! Trying next mode...\n",
+            LOG_F(ERROR, "Failure setting video mode %dx%dx%d windowed! Trying next mode...",
                         validmode[resIdx].xdim, validmode[resIdx].ydim, bpp);
 
             if (++resIdx == validmodecnt)

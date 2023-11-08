@@ -255,7 +255,7 @@ static int osdcmd_music(osdcmdptr_t parm)
         if (!levelTryPlayMusic(nEpisode, nLevel))
         {
             if (CDAudioToggle)
-                snprintf(buffer, sizeof(buffer), "Playing %i track", gEpisodeInfo[nEpisode].levelsInfo[nLevel].SongId);
+                snprintf(buffer, sizeof(buffer), "Playing track %i", gEpisodeInfo[nEpisode].levelsInfo[nLevel].SongId);
             else
                 snprintf(buffer, sizeof(buffer), "Playing %s", gEpisodeInfo[nEpisode].levelsInfo[nLevel].Song);
             viewSetMessage(buffer);
@@ -306,7 +306,7 @@ static int osdcmd_vidmode(osdcmdptr_t parm)
 
     if (videoSetGameMode(newfs,newwidth,newheight,newbpp,upscalefactor))
     {
-        initprintf("vidmode: Mode change failed!\n");
+        LOG_F(ERROR, "vidmode: Mode change failed!");
         if (videoSetGameMode(gSetup.fullscreen, gSetup.xdim, gSetup.ydim, gSetup.bpp, upscalefactor))
             ThrowError("vidmode: Reset failed!\n");
     }
@@ -1089,9 +1089,9 @@ int32_t registerosdcommands(void)
 //        { "touch_invert", "invert look up/down touch input", (void *) &droidinput.invertLook, CVAR_INT, 0, 1 },
 //#endif
 //
-        { "vid_gamma","adjusts gamma component of gamma ramp",(void *)&g_videoGamma, CVAR_FLOAT|CVAR_FUNCPTR, 0, 10 },
-        { "vid_contrast","adjusts contrast component of gamma ramp",(void *)&g_videoContrast, CVAR_FLOAT|CVAR_FUNCPTR, 0, 10 },
-        { "vid_brightness","adjusts brightness component of gamma ramp",(void *)&g_videoBrightness, CVAR_FLOAT|CVAR_FUNCPTR, 0, 10 },
+        { "vid_gamma","gamma/brightness correction",(void *) &g_videoGamma, CVAR_FLOAT|CVAR_FUNCPTR, (int)floor(MIN_GAMMA), (int)ceil(MAX_GAMMA) },
+        { "vid_contrast","contrast correction",(void *) &g_videoContrast, CVAR_FLOAT|CVAR_FUNCPTR, (int)floor(MIN_CONTRAST), (int)ceil(MAX_CONTRAST) },
+        { "vid_saturation","saturation correction",(void *) &g_videoSaturation, CVAR_FLOAT|CVAR_FUNCPTR, (int)floor(MIN_SATURATION), (int)ceil(MAX_SATURATION) },
 //        { "wchoice","sets weapon autoselection order", (void *)ud.wchoice, CVAR_STRING|CVAR_FUNCPTR, 0, MAX_WEAPONS },
     };
 //

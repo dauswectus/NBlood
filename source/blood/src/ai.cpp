@@ -204,8 +204,17 @@ bool CanMove(spritetype *pSprite, int a2, int nAngle, int nRange)
         if (Underwater)
             return true;
         break;
-    case kDudeCerberusTwoHead:
     case kDudeCerberusOneHead:
+        if (VanillaMode())
+        {
+            if (Crusher)
+                return false;
+            if ((nXSector < 0 || (!xsector[nXSector].Underwater && !xsector[nXSector].Depth)) && floorZ - bottom > 0x2000)
+                return false;
+            break;
+        }
+        fallthrough__;
+    case kDudeCerberusTwoHead:
         // by NoOne: a quick fix for Cerberus spinning in E3M7-like maps, where damage sectors is used.
         // It makes ignore danger if enemy immune to N damageType. As result Cerberus start acting like
         // in Blood 1.0 so it can move normally to player. It's up to you for adding rest of enemies here as
@@ -1347,7 +1356,7 @@ void aiLookForTarget(spritetype *pSprite, XSPRITE *pXSprite)
         }
         if (pXSprite->state)
         {
-            char sectmap[(kMaxSectors+7)>>3];
+            char sectmap[bitmap_size(kMaxSectors)];
             gAffectedSectors[0] = 0;
             gAffectedXWalls[0] = 0;
             GetClosestSpriteSectors(pSprite->sectnum, pSprite->x, pSprite->y, 400, gAffectedSectors, sectmap, gAffectedXWalls);

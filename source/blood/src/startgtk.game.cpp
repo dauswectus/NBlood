@@ -227,11 +227,16 @@ static unsigned char GetModsDirNames(GtkListStore *list)
     BUILDVFS_FIND_REC *dirs = NULL;
     GtkTreeIter iter;
 
+    int const bakpathsearchmode = pathsearchmode;
     pathsearchmode = 1;
 
     if ((homedir = Bgethomedir()))
     {
-        Bsnprintf(pdir, sizeof(pdir), "%s/" ".nblood", homedir);
+        if (buildvfs_exists("user_profiles_disabled"))
+            buildvfs_getcwd(pdir, sizeof(pdir));
+        else
+            Bsnprintf(pdir, sizeof(pdir), "%s/.config/" APPBASENAME, homedir);
+
         dirs = klistpath(pdir, "*", BUILDVFS_FIND_DIR);
         for (; dirs != NULL; dirs=dirs->next)
         {
@@ -251,6 +256,7 @@ static unsigned char GetModsDirNames(GtkListStore *list)
     klistfree(dirs);
     dirs = NULL;
 
+    pathsearchmode = bakpathsearchmode;
     return iternumb;
 }
 

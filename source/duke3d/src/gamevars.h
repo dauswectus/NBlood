@@ -137,7 +137,7 @@ static FORCE_INLINE int __fastcall Gv_GetArrayValue(int const id, int index)
         case GAMEARRAY_INT8:   return   ((int8_t   *)aGameArrays[id].pValues)[index];
         case GAMEARRAY_UINT16: return   ((uint16_t *)aGameArrays[id].pValues)[index];
         case GAMEARRAY_UINT8:  return   ((uint8_t  *)aGameArrays[id].pValues)[index];
-        case GAMEARRAY_BITMAP: return !!(((uint8_t *)aGameArrays[id].pValues)[index >> 3] & pow2char[index & 7]);
+        case GAMEARRAY_BITMAP: return !!bitmap_test((uint8_t *)aGameArrays[id].pValues, index);
     }
 }
 
@@ -228,6 +228,7 @@ static FORCE_INLINE void __fastcall VM_SetStruct(uint32_t const flags, intptr_t 
             case GAMEVAR_PERACTOR:                                                                     \
                 var.pValues[vm.spriteNum & (MAXSPRITES-1)] operator operand;                           \
                 break;                                                                                 \
+            case GAMEVAR_RAWQ16PTR:                                                                    \
             case GAMEVAR_INT32PTR: *(int32_t *)var.pValues operator(int32_t) operand; break;           \
             case GAMEVAR_INT16PTR: *(int16_t *)var.pValues operator(int16_t) operand; break;           \
             case GAMEVAR_Q16PTR:                                                                       \

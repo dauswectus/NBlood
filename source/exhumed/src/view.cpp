@@ -47,7 +47,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "save.h"
 #include "trigdat.h"
 #include "runlist.h"
-#include <string.h>
 
 short bSubTitles = kTrue;
 
@@ -243,7 +242,7 @@ static void analyzesprites()
             int const nRootTile = pTSprite->picnum;
             int const nVoxel = tiletovox[pTSprite->picnum];
 
-            if (nVoxel != -1 && ((voxrotate[nVoxel >> 3] & pow2char[nVoxel & 7]) != 0 || (picanm[nRootTile].extra & 7) == 7))
+            if (nVoxel != -1 && ((voxflags[nVoxel] & VF_ROTATE) || (picanm[nRootTile].extra & 7) == 7))
                 pTSprite->ang = (pTSprite->ang + ((int)totalclock << 3)) & kAngleMask;
 
             if (pTSprite->picnum == 736) // invincibility sprite needs to always face player

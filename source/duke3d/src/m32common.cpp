@@ -249,7 +249,7 @@ int32_t taglab_save(const char *mapname)
     buildvfs_fd fil;
     if ((fil = buildvfs_open_write(buf)) == buildvfs_fd_invalid)
     {
-        initprintf("Couldn't open \"%s\" for writing: %s\n", buf, strerror(errno));
+        LOG_F(ERROR, "Couldn't open \"%s\" for writing: %s", buf, strerror(errno));
         return -1;
     }
 
@@ -449,6 +449,10 @@ void create_map_snapshot(void)
     mapstate->num[UNDO_WALLS]   = numwalls;
     mapstate->num[UNDO_SPRITES] = Numsprites;
 
+    mapstate->startpos     = startpos;
+    mapstate->startang     = startang;
+    mapstate->startsectnum = startsectnum;
+
     if (numsectors)
     {
         XXH64_hash_t temphash = XXH3_64bits((uint8_t *)sector, numsectors*sizeof(sectortype));
@@ -515,6 +519,10 @@ int32_t map_undoredo(int dir)
     numwalls     = mapstate->num[UNDO_WALLS];
     map_revision = mapstate->revision;
 
+    startpos     = mapstate->startpos;
+    startang     = mapstate->startang;
+    startsectnum = mapstate->startsectnum;
+
     Bmemset(show2dsector, 0, sizeof(show2dsector));
 
     reset_highlightsector();
@@ -545,7 +553,8 @@ int32_t map_undoredo(int dir)
     // insert sprites
     for (int i=0; i<mapstate->num[UNDO_SPRITES]; i++)
     {
-        if ((sprite[i].cstat & 48) == 48 && (sprite[i].xoffset|sprite[i].yoffset) == 0) sprite[i].cstat &= ~48;
+        if ((sprite[i].cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_SLOPE && (sprite[i].xoffset|sprite[i].yoffset) == 0)
+            sprite[i].cstat &= ~CSTAT_SPRITE_ALIGNMENT_SLOPE;
         Bassert((unsigned)sprite[i].sectnum < (unsigned)numsectors
                    && (unsigned)sprite[i].statnum < MAXSTATUS);
         insertsprite(sprite[i].sectnum, sprite[i].statnum);
@@ -729,7 +738,7 @@ static int32_t csc_s, csc_i;
 static int32_t check_spritelist_consistency()
 {
     int32_t ournumsprites=0;
-    static uint8_t havesprite[(MAXSPRITES+7)>>3];
+    static uint8_t havesprite[bitmap_size(MAXSPRITES)];
 
     csc_s = csc_i = -1;
 
@@ -754,13 +763,13 @@ static int32_t check_spritelist_consistency()
 
     if (ournumsprites != Numsprites)
     {
-        initprintf("ournumsprites=%d, Numsprites=%d\n", ournumsprites, Numsprites);
+        LOG_F(INFO, "ournumsprites=%d, Numsprites=%d", ournumsprites, Numsprites);
         return 4;  // counting sprites by statnum!=MAXSTATUS inconsistent with Numsprites
     }
 
     // SECTOR LIST
 
-    Bmemset(havesprite, 0, (Numsprites+7)>>3);
+    Bmemset(havesprite, 0, bitmap_size(Numsprites));
 
     for (bssize_t s=0; s<numsectors; s++)
     {
@@ -774,10 +783,10 @@ static int32_t check_spritelist_consistency()
             if (i >= MAXSPRITES)
                 return 5;  // oob sprite index in list, or Numsprites inconsistent
 
-            if (havesprite[i>>3]&pow2char[i&7])
+            if (bitmap_test(havesprite, i))
                 return 6;  // have a cycle in the list
 
-            havesprite[i>>3] |= pow2char[i&7];
+            bitmap_set(havesprite, i);
 
             if (sprite[i].sectnum != s)
                 return 7;  // .sectnum inconsistent with list
@@ -792,7 +801,7 @@ static int32_t check_spritelist_consistency()
     {
         csc_i = i;
 
-        if (sprite[i].statnum!=MAXSTATUS && !(havesprite[i>>3]&pow2char[i&7]))
+        if (sprite[i].statnum!=MAXSTATUS && !bitmap_test(havesprite, i))
             return 9;  // have a sprite in the world not in sector list
     }
 
@@ -813,10 +822,10 @@ static int32_t check_spritelist_consistency()
 
             // have a cycle in the list, or status list inconsistent with
             // sector list (*)
-            if (!(havesprite[i>>3]&pow2char[i&7]))
+            if (!bitmap_test(havesprite, i))
                 return 11;
 
-            havesprite[i>>3] &= ~pow2char[i&7];
+            bitmap_clear(havesprite, i);
 
             if (sprite[i].statnum != s)
                 return 12;  // .statnum inconsistent with list
@@ -833,7 +842,7 @@ static int32_t check_spritelist_consistency()
 
         // Status list contains only a proper subset of the sprites in the
         // sector list.  Reverse case is handled by (*)
-        if (havesprite[i>>3]&pow2char[i&7])
+        if (bitmap_test(havesprite, i))
             return 14;
     }
 
@@ -905,7 +914,7 @@ int32_t CheckMapCorruption(int32_t printfromlev, uint64_t tryfixing)
 
     if (!corruptcheck_noalreadyrefd)
     {
-        seen_nextwalls = (uint8_t *)Xcalloc((numwalls+7)>>3,1);
+        seen_nextwalls = (uint8_t *)Xcalloc(bitmap_size(numwalls),1);
         lastnextwallsource = (int16_t *)Xmalloc(numwalls*sizeof(lastnextwallsource[0]));
     }
 
@@ -1168,7 +1177,7 @@ int32_t CheckMapCorruption(int32_t printfromlev, uint64_t tryfixing)
                 // Check for ".nextwall already referenced from wall ..."
                 if (!corruptcheck_noalreadyrefd && nw>=0 && nw<numwalls)
                 {
-                    if (seen_nextwalls[nw>>3]&pow2char[nw&7])
+                    if (bitmap_test(seen_nextwalls, nw))
                     {
                         const int32_t onumct = numcorruptthings;
 
@@ -1310,7 +1319,7 @@ end_wall_loop_checks:
         {
             const int32_t tilenum = sprite[i].picnum;
 
-            if (tilenum >= 1 && tilenum <= 9 && (sprite[i].cstat&48))
+            if (tilenum >= 1 && tilenum <= 9 && (sprite[i].cstat & CSTAT_SPRITE_ALIGNMENT))
             {
                 const int32_t onumct = numcorruptthings;
 
@@ -1876,7 +1885,7 @@ void m32_showmouse()
 
     int const lores = !!(xdim <= 640);
     int col = batmanandthrobbin();
-    int i; 
+    int i;
 
     for (i = 1; i <= (7 >> lores); i++)
     {

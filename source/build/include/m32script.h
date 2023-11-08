@@ -94,6 +94,7 @@ enum GameEvent_t {
     EVENT_PRESAVEMAP,
     EVENT_PREDRAW2DSCREEN,
     EVENT_GETNUMBER,
+    EVENT_INIT,
     MAXEVENTS
 };
 
@@ -230,7 +231,7 @@ extern int32_t mousyplc;
 
 #define M32_LOCAL_ARRAY_ID 0
 
-#define M32_PRINTERROR(Text, ...) OSD_Printf("%sLine %d, %s: " Text "\n", osd->draw.errorfmt, g_errorLineNum, keyw[g_tw], ## __VA_ARGS__)
+#define M32_PRINTERROR(Text, ...) LOG_F(ERROR, "Line %d, %s: " Text "", g_errorLineNum, keyw[g_tw], ## __VA_ARGS__)
 #define M32_ERROR(Text, ...) do { M32_PRINTERROR(Text, ## __VA_ARGS__); vm.flags |= VMFLAG_ERROR; } while (0)
 
 

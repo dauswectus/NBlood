@@ -413,20 +413,23 @@ void G_AnimateCamSprite(int smoothRatio)
 #ifdef DEBUG_VALGRIND_NO_SMC
     return;
 #endif
+    static int idx;
 
     int viewscreenOwners[MAX_ACTIVE_VIEWSCREENS];
     int viewscreenSizeX[MAX_ACTIVE_VIEWSCREENS];
     int viewscreenSizeY[MAX_ACTIVE_VIEWSCREENS];
 
     for (int vscrIndex = 0; vscrIndex < MAX_ACTIVE_VIEWSCREENS; vscrIndex++)
+        if (g_activeVscrSprite[vscrIndex] < 0)
+            viewscreenOwners[vscrIndex] = -1;
+
+    for (int vscrInc = 0; vscrInc < MAX_ACTIVE_VIEWSCREENS; vscrInc++)
     {
+        int const vscrIndex = (idx + vscrInc) & (MAX_ACTIVE_VIEWSCREENS-1);
         int const spriteNum = g_activeVscrSprite[vscrIndex];
 
         if (spriteNum < 0)
-        {
-            viewscreenOwners[vscrIndex] = -1;
             continue;
-        }
 
         if (totalclock >= T1(spriteNum) + ud.camera_time)
         {
@@ -476,6 +479,8 @@ void G_AnimateCamSprite(int smoothRatio)
             }
 
             T1(spriteNum) = (int32_t) totalclock;
+            idx = vscrIndex;
+            return;
         }
     }
 }
@@ -1564,7 +1569,8 @@ void A_DamageWall_Internal(int spriteNum, int wallNum, const vec3_t &vPos, int w
     int16_t sectNum = -1;
     walltype *pWall = &wall[wallNum];
 
-    if ((g_tile[pWall->overpicnum].flags & SFLAG_DAMAGEEVENT) || (g_tile[pWall->picnum].flags & SFLAG_DAMAGEEVENT))
+    if (((unsigned)pWall->overpicnum < MAXTILES && (g_tile[pWall->overpicnum].flags & SFLAG_DAMAGEEVENT))
+        || ((unsigned)pWall->picnum < MAXTILES && (g_tile[pWall->picnum].flags & SFLAG_DAMAGEEVENT)))
     {
         if (VM_OnEventWithReturn(EVENT_DAMAGEWALL, spriteNum, -1, wallNum) < 0)
             return;
@@ -2424,13 +2430,17 @@ void A_DamageObject_Duke3D(int spriteNum, int const dmgSrc)
             {
                 if (sprite[spriteNum].extra > 0)
                 {
-                    if ((sprite[spriteNum].cstat & 48) == 0)
+                    if ((sprite[spriteNum].cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING)
                         SA(spriteNum)          = (sprite[dmgSrc].ang + 1024) & 2047;
                     sprite[spriteNum].xvel  = -(sprite[dmgSrc].extra << 2);
+
                     int16_t sectNum = SECT(spriteNum);
-                    pushmove(&sprite[spriteNum].xyz, &sectNum, 128L, (4L << 8), (4L << 8), CLIPMASK0);
-                    if (sectNum != SECT(spriteNum) && (unsigned)sectNum < MAXSECTORS)
-                        changespritesect(spriteNum, sectNum);
+                    if ((unsigned)sectNum < MAXSECTORS)
+                    {
+                        pushmove(&sprite[spriteNum].xyz, &sectNum, 128L, (4L << 8), (4L << 8), CLIPMASK0);
+                        if (sectNum != SECT(spriteNum) && (unsigned)sectNum < MAXSECTORS)
+                            changespritesect(spriteNum, sectNum);
+                    }
                 }
             }
 
@@ -2519,7 +2529,7 @@ void A_DamageObject_Generic(int spriteNum, int const dmgSrc)
                 {
                     if (sprite[spriteNum].extra > 0)
                     {
-                        if ((sprite[spriteNum].cstat & 48) == 0)
+                        if ((sprite[spriteNum].cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING)
                             SA(spriteNum) = (sprite[dmgSrc].ang + 1024) & 2047;
                         sprite[spriteNum].xvel  = -(sprite[dmgSrc].extra << 2);
                         int16_t sectNum = SECT(spriteNum);
@@ -2660,12 +2670,15 @@ void P_HandleSharedKeys(int playerNum)
         pPlayer->aim_mode |= ((extBits>>EK_GAMEPAD_CENTERING)&1)<<1;
         pPlayer->aim_mode |= ((extBits>>EK_GAMEPAD_AIM_ASSIST)&1)<<2;
 
-        if (pPlayer->aim_mode < (aimMode & 3))
+        // g_skipReturnToCenter workaround: playerBits and extBits are both briefly set to 0 after CON_SAVE
+        if (!g_skipReturnToCenter && (pPlayer->aim_mode < (aimMode & 3)))
             pPlayer->return_to_center = 9;
+        else
+            g_skipReturnToCenter = false;
     }
 
     if (TEST_SYNC_KEY(playerBits, SK_QUICK_KICK) && pPlayer->quick_kick == 0)
-        if (PWEAPON(playerNum, pPlayer->curr_weapon, WorksLike) != KNEE_WEAPON || pPlayer->kickback_pic == 0)
+        if (dukeAllowQuickKick() || PWEAPON(playerNum, pPlayer->curr_weapon, WorksLike) != KNEE_WEAPON || pPlayer->kickback_pic == 0)
         {
             if (VM_OnEvent(EVENT_QUICKKICK,g_player[playerNum].ps->i,playerNum) == 0)
             {
@@ -3606,4 +3619,3 @@ void P_CheckSectors(int playerNum)
         }
     }
 }
-

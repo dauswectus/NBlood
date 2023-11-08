@@ -472,8 +472,8 @@ int osdcmd_restartmap(osdcmdptr_t UNUSED(parm))
 
 static int osdcmd_vidmode(osdcmdptr_t parm)
 {
-    int32_t newbpp = ud.setup.bpp, newwidth = ud.setup.xdim,
-            newheight = ud.setup.ydim, newfs = ud.setup.fullscreen;
+    int32_t newbpp = bpp, newwidth = xres,
+            newheight = yres, newfs = fullscreen;
     int32_t tmp;
 
     if (parm->numparms < 1 || parm->numparms > 4) return OSDCMD_SHOWHELP;
@@ -506,7 +506,7 @@ static int osdcmd_vidmode(osdcmdptr_t parm)
     if (videoSetGameMode(newfs,newwidth,newheight,newbpp,upscalefactor))
     {
         LOG_F(ERROR, "Failed to set video mode!");
-        if (videoSetGameMode(ud.setup.fullscreen, ud.setup.xdim, ud.setup.ydim, ud.setup.bpp, upscalefactor))
+        if (videoSetGameMode(fullscreen, xres, yres, bpp, upscalefactor))
             G_GameExit("Failed to set video mode!");
     }
     ud.setup.bpp = newbpp;
@@ -759,7 +759,7 @@ static int osdcmd_crosshaircolor(osdcmdptr_t parm)
     uint8_t const b = Batol(parm->parms[2]);
 
     G_SetCrosshairColor(r,g,b);
-    
+
     if (!OSD_ParsingScript())
         LOG_F(INFO, "%s", parm->raw);
 
@@ -1606,13 +1606,14 @@ int32_t registerosdcommands(void)
 
         { "cl_cheatmask", "bitmask controlling cheats unlocked in menu", (void *)&cl_cheatmask, CVAR_UINT, 0, ~0 },
         { "cl_democams", "third-person cameras in demos" CVAR_BOOL_OPTSTR, (void *)&ud.democams, CVAR_BOOL, 0, 1 },
+        { "cl_kickmode", "quick kick behavior:\n 0: automatic based on script version\n 1: 1.3D\n 2: 1.4+", (void*)&ud.kick_mode, CVAR_INT, 0, 2 },
         { "cl_runmode", "run key behavior with cl_autorun enabled:\n 0: walk\n 1: do nothing", (void *)&ud.runkey_mode, CVAR_BOOL, 0, 1 },
 
         { "cl_showcoords", "DEBUG: coordinate display", (void *)&ud.coords, CVAR_INT, 0,
 #ifdef USE_OPENGL
-          2
+          3
 #else
-          1
+          2
 #endif
         },
 
@@ -1680,8 +1681,8 @@ int32_t registerosdcommands(void)
             (void *)&ud.config.JoystickAimAssist, CVAR_BOOL, 0, 1
         },
 
-        { "in_joystick","use joystick or controller input" CVAR_BOOL_OPTSTR,(void *)&ud.setup.usejoystick, CVAR_BOOL|CVAR_FUNCPTR, 0, 1 },
-        { "in_mouse","use mouse input" CVAR_BOOL_OPTSTR,(void *)&ud.setup.usemouse, CVAR_BOOL|CVAR_FUNCPTR, 0, 1 },
+        { "in_joystick","use joystick or controller input" CVAR_BOOL_OPTSTR,(void *)&ud.setup.usejoystick, CVAR_BOOL|CVAR_FUNCPTR|CVAR_NOSAVE, 0, 1 },
+        { "in_mouse","use mouse input" CVAR_BOOL_OPTSTR,(void *)&ud.setup.usemouse, CVAR_BOOL|CVAR_FUNCPTR|CVAR_NOSAVE, 0, 1 },
 
         { "in_aimmode", "DEPRECATED: hold button for mouse aim" CVAR_BOOL_OPTSTR, (void *)&ud.mouseaiming, CVAR_BOOL, 0, 1 },
         { "in_mousemode", "DEPRECATED: vertical mouse aiming" CVAR_BOOL_OPTSTR, (void *)&g_myAimMode, CVAR_BOOL, 0, 1 },
@@ -1722,6 +1723,7 @@ int32_t registerosdcommands(void)
 
         { "snd_ambience", "ambient sounds" CVAR_BOOL_OPTSTR, (void *)&ud.config.AmbienceToggle, CVAR_BOOL, 0, 1 },
         { "snd_enabled", "sound effects" CVAR_BOOL_OPTSTR, (void *)&ud.config.SoundToggle, CVAR_BOOL|CVAR_FUNCPTR, 0, 1 },
+        { "snd_volume", "master volume control", (void *)&ud.config.MasterVolume, CVAR_INT, 0, 255 },
         { "snd_fxvolume", "volume of sound effects", (void *)&ud.config.FXVolume, CVAR_INT, 0, 255 },
         { "snd_mixrate", "sound mixing rate", (void *)&ud.config.MixRate, CVAR_INT|CVAR_FUNCPTR, 0, 48000 },
         { "snd_numchannels", "the number of sound channels", (void *)&ud.config.NumChannels, CVAR_INT|CVAR_FUNCPTR, 0, 2 },
@@ -1730,6 +1732,7 @@ int32_t registerosdcommands(void)
         { "snd_reversestereo", "reverses the stereo channels", (void *)&ud.config.ReverseStereo, CVAR_BOOL, 0, 1 },
 #endif
         { "snd_speech", "bitmask controlling player speech", (void *)&ud.config.VoiceToggle, CVAR_INT, 0, 5 },
+        { "snd_speechvolume", "volume of in-game speech", (void *)&ud.config.VoiceVolume, CVAR_INT, 0, 255 },
 #ifdef FORMAT_UPGRADE_ELIGIBLE
         { "snd_tryformats", "discover and use replacement audio in .flac and .ogg formats if available" CVAR_BOOL_OPTSTR, (void *)&g_maybeUpgradeSoundFormats, CVAR_BOOL, 0, 1 },
         { "mus_tryformats", "discover and use replacement music in .flac and .ogg formats if available (requires snd_tryformats 1)" CVAR_BOOL_OPTSTR, (void *)&g_maybeUpgradeMusic,
@@ -1767,7 +1770,7 @@ int32_t registerosdcommands(void)
 #if !defined NETCODE_DISABLE
     OSD_RegisterFunction("connect","connect: connects to a multiplayer game", osdcmd_connect);
     OSD_RegisterFunction("disconnect","disconnect: disconnects from the local multiplayer game", osdcmd_disconnect);
-    OSD_RegisterFunction("dumpmapstates", "Dumps current snapshots to CL/Srv_MapStates.bin", osdcmd_dumpmapstate);
+    OSD_RegisterFunction("dumpmapstates", "dumps current snapshots to CL/Srv_MapStates.bin", osdcmd_dumpmapstate);
 #if 0
     OSD_RegisterFunction("kick","kick <id>: kicks a multiplayer client.  See listplayers.", osdcmd_kick);
     OSD_RegisterFunction("kickban","kickban <id>: kicks a multiplayer client and prevents them from reconnecting.  See listplayers.", osdcmd_kickban);
@@ -1775,7 +1778,7 @@ int32_t registerosdcommands(void)
     OSD_RegisterFunction("listplayers","listplayers: lists currently connected multiplayer clients", osdcmd_listplayers);
     OSD_RegisterFunction("name","name: change your multiplayer nickname", osdcmd_name);
     OSD_RegisterFunction("password","password: sets multiplayer game password", osdcmd_password);
-    OSD_RegisterFunction("playerinfo", "Prints information about the current player", osdcmd_playerinfo);
+    OSD_RegisterFunction("playerinfo", "prints information about the current player", osdcmd_playerinfo);
 #endif
 
     if (VOLUMEONE)
@@ -1818,7 +1821,7 @@ int32_t registerosdcommands(void)
 
     OSD_RegisterFunction("locale","locale: changes the locale", osdcmd_locale);
 
-    OSD_RegisterFunction("music","music E<ep>L<lev>: change music", osdcmd_music);
+    OSD_RegisterFunction("music","music E<ep>L<lev>: changes music", osdcmd_music);
 
     OSD_RegisterFunction("noclip","noclip: toggles clipping mode", osdcmd_noclip);
 
@@ -1844,7 +1847,7 @@ int32_t registerosdcommands(void)
     OSD_RegisterFunction("unbindall","unbindall: unbinds all keys", osdcmd_unbindall);
     OSD_RegisterFunction("unbound", NULL, osdcmd_unbound);
 
-    OSD_RegisterFunction("vidmode","vidmode <xdim> <ydim> <bpp> <fullscreen>: change the video mode",osdcmd_vidmode);
+    OSD_RegisterFunction("vidmode","vidmode <xdim> <ydim> <bpp> <fullscreen>: changes the video mode",osdcmd_vidmode);
 #ifdef USE_OPENGL
     baselayer_osdcmd_vidmode_func = osdcmd_vidmode;
 #endif

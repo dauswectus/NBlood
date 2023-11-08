@@ -25,9 +25,9 @@ Prepared for public release: 03/28/2005 - Charlie Wiederhold, 3D Realms
 //-------------------------------------------------------------------------
 #include "mytypes.h"
 #include "gamedefs.h"
-// Only ad to the end. These currently have to be in this order because of the
-// way they are initilized.
 
+// Only add new members to the END of this struct.
+// This is required to maintain savegame compatibility.
 typedef struct
 {
     int MouseSpeed;
@@ -73,8 +73,8 @@ typedef struct
     SWBOOL Darts;
     SWBOOL WeaponAutoSwitch;
     int FOV;
+    SWBOOL AltReverb;
 } GAME_SET, *GAME_SETp;
 
 extern const GAME_SET gs_defaults;
 extern GAME_SET gs;
-

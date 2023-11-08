@@ -264,7 +264,9 @@ void CONFIG_SetDefaults(void)
     ud.config.AmbienceToggle  = 1;
     ud.config.AutoAim         = 1;
     ud.config.CheckForUpdates = 1;
+    ud.config.MasterVolume    = 255;
     ud.config.FXVolume        = 255;
+    ud.config.VoiceVolume     = 255;
     ud.config.JoystickAimWeight = 4;
     ud.config.JoystickViewCentering = 4;
     ud.config.JoystickAimAssist = 1;
@@ -294,6 +296,7 @@ void CONFIG_SetDefaults(void)
     ud.god                    = 0;
     ud.hudontop               = 0;
     ud.idplayers              = 1;
+    ud.kick_mode              = 0;
     ud.levelstats             = 0;
     ud.lockout                = 0;
     ud.m_marker               = 1;
@@ -774,7 +777,7 @@ int CONFIG_ReadSetup(void)
         SCRIPT_GetNumber(ud.config.scripthandle, "Screen Setup", "Out", &ud.lockout);
         SCRIPT_GetString(ud.config.scripthandle, "Screen Setup", "Password", &ud.pwlockout[0]);
     }
-    
+
     SCRIPT_GetNumber(ud.config.scripthandle, "Screen Setup", "MaxRefreshFreq", (int32_t *)&maxrefreshfreq);
     SCRIPT_GetNumber(ud.config.scripthandle, "Screen Setup", "ScreenBPP", &ud.setup.bpp);
     SCRIPT_GetNumber(ud.config.scripthandle, "Screen Setup", "ScreenDisplay", &r_displayindex);
@@ -788,7 +791,7 @@ int CONFIG_ReadSetup(void)
         g_windowPos = windowPos;
         g_windowPosValid = true;
     }
-    
+
     if (ud.setup.bpp < 8) ud.setup.bpp = 32;
 
 #ifdef POLYMER
@@ -804,6 +807,9 @@ int CONFIG_ReadSetup(void)
     SCRIPT_GetNumber(ud.config.scripthandle, "Updates", "LastUpdateCheck", &ud.config.LastUpdateCheck);
 #endif
 
+    SCRIPT_GetNumber(ud.config.scripthandle, "Controls", "UseJoystick", &ud.setup.usejoystick);
+    SCRIPT_GetNumber(ud.config.scripthandle, "Controls", "UseMouse", &ud.setup.usemouse);
+
     // restore localization
     char locale[64] = "en";
     SCRIPT_GetString(ud.config.scripthandle, "Misc", "Locale", &locale[0]);
@@ -815,8 +821,9 @@ int CONFIG_ReadSetup(void)
 
 void CONFIG_ReadSettings(void)
 {
+    char *dummy = NULL;
     char *const setupFileName = Xstrdup(g_setupFileName);
-    char *const p = strtok(setupFileName, ".");
+    char *const p = Bstrtoken(setupFileName, ".", &dummy, 1);
 
     if (!p || !Bstrcmp(g_setupFileName, SETUPFILENAME))
         Bsprintf(tempbuf, "settings.cfg");
@@ -836,12 +843,13 @@ void CONFIG_WriteSettings(void) // save binds and aliases to <cfgname>_settings.
 {
     if (ud.config.setupread != 2) return;
 
+    char *dummy = NULL;
     char filename[BMAX_PATH];
 
     if (!Bstrcmp(g_setupFileName, SETUPFILENAME))
         Bsprintf(filename, "settings.cfg");
     else
-        Bsprintf(filename, "%s_settings.cfg", strtok(g_setupFileName, "."));
+        Bsprintf(filename, "%s_settings.cfg", Bstrtoken(g_setupFileName, ".", &dummy, 1));
 
     buildvfs_FILE fp = buildvfs_fopen_write(filename);
 
@@ -939,7 +947,7 @@ void CONFIG_WriteSetup(uint32_t flags)
     }
 
     SCRIPT_PutNumber(ud.config.scripthandle, "Screen Setup", "MaxRefreshFreq", maxrefreshfreq, FALSE, FALSE);
-    
+
     if (g_windowPosValid)
     {
         SCRIPT_PutNumber(ud.config.scripthandle, "Screen Setup", "WindowPosX", g_windowPos.x, FALSE, FALSE);
@@ -1005,6 +1013,9 @@ void CONFIG_WriteSetup(uint32_t flags)
             SCRIPT_PutNumber(ud.config.scripthandle, "Controls", buf, ud.config.JoystickAnalogueSaturate[dummy], FALSE, FALSE);
         }
     }
+
+    SCRIPT_PutNumber(ud.config.scripthandle, "Controls", "UseJoystick", ud.setup.usejoystick, FALSE, FALSE);
+    SCRIPT_PutNumber(ud.config.scripthandle, "Controls", "UseMouse", ud.setup.usemouse, FALSE, FALSE);
 
     if (!CommandName)
         SCRIPT_PutString(ud.config.scripthandle, "Comm Setup","PlayerName",&szPlayerName[0]);

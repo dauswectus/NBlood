@@ -108,7 +108,7 @@ extern SWBOOL PredictionOn;
 extern PLAYER PredictPlayer;
 extern PLAYERp ppp;
 extern short predictangpos[MOVEFIFOSIZ];
-extern int predictmovefifoplc;
+extern unsigned int predictmovefifoplc;
 extern SWBOOL Prediction;
 extern short NumSyncBytes;
 
@@ -186,4 +186,3 @@ void CheckVersion(int GameVersion);
 void SW_SendMessage(short pnum,const char *text);
 void PauseGame(void);
 void ResumeGame(void);
-

@@ -35,8 +35,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sbar.h"
 #include "screens.h"
 
-#include <cfloat>
-
 #define COLOR_RED redcol
 #define COLOR_WHITE whitecol
 
@@ -112,16 +110,17 @@ void G_GetCrosshairColor(void)
 
     // find the brightest color in the original 8-bit tile
     int32_t ii = tilesiz[CROSSHAIR].x * tilesiz[CROSSHAIR].y;
-    int32_t bri = 0, j = 0, i;
+    size_t bri = 0, j = 0, i;
 
     Bassert(ii > 0);
 
     do
     {
-        if (*ptr != 255)
+        size_t c = *ptr;
+        if (c != 255)
         {
-            i = curpalette[(int32_t) *ptr].r+curpalette[(int32_t) *ptr].g+curpalette[(int32_t) *ptr].b;
-            if (i > j) { j = i; bri = *ptr; }
+            i = curpalette[c].r + curpalette[c].g + curpalette[c].b;
+            if (i > j) { j = i; bri = c; }
         }
         ptr++;
     } while (--ii);
@@ -343,7 +342,7 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
     //Draw red lines
     for (i=numsectors-1; i>=0; i--)
     {
-        if (!(show2dsector[i>>3]&pow2char[i&7])) continue;
+        if (!bitmap_test(show2dsector, i)) continue;
 
         startwall = sector[i].wallptr;
         endwall = sector[i].wallptr + sector[i].wallnum;
@@ -359,7 +358,7 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
             if (sector[wal->nextsector].ceilingz == z1 && sector[wal->nextsector].floorz == z2)
                     if (((wal->cstat|wall[wal->nextwall].cstat)&(16+32)) == 0) continue;
 
-            if (!(show2dsector[wal->nextsector>>3]&pow2char[wal->nextsector&7]))
+            if (!bitmap_test(show2dsector, wal->nextsector))
                 col = editorcolors[7];
             else continue;
 
@@ -384,7 +383,7 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
     k = g_player[screenpeek].ps->i;
     if (!FURY) for (i=numsectors-1; i>=0; i--)
     {
-        if (!(show2dsector[i>>3]&pow2char[i&7])) continue;
+        if (!bitmap_test(show2dsector, i)) continue;
         for (j=headspritesect[i]; j>=0; j=nextspritesect[j])
         {
             spr = &sprite[j];
@@ -397,9 +396,9 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
             sprx = spr->x;
             spry = spr->y;
 
-            if ((spr->cstat&257) != 0) switch (spr->cstat&48)
+            if ((spr->cstat&257) != 0) switch (spr->cstat & CSTAT_SPRITE_ALIGNMENT)
             {
-            case 0:
+            case CSTAT_SPRITE_ALIGNMENT_FACING:
                 //                    break;
 
                 ox = sprx-cposx;
@@ -423,7 +422,7 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
                     x1+x2+(xdim<<11), y1+y3+(ydim<<11), col);
                 break;
 
-            case 16:
+            case CSTAT_SPRITE_ALIGNMENT_WALL:
                 if (spr->picnum == LASERLINE)
                 {
                     x1 = sprx;
@@ -458,14 +457,14 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
 
                 break;
 
-            case 32:
-            case 48:
+            case CSTAT_SPRITE_ALIGNMENT_FLOOR:
+            case CSTAT_SPRITE_ALIGNMENT_SLOPE:
                 heinum = spriteGetSlope(j);
                 ratio = ksqrt(heinum * heinum + 16777216);
                 tilenum = spr->picnum;
                 xoff = picanm[tilenum].xofs;
                 yoff = picanm[tilenum].yofs;
-                if ((spr->cstat & 48) != 48)
+                if ((spr->cstat & CSTAT_SPRITE_ALIGNMENT) != CSTAT_SPRITE_ALIGNMENT_SLOPE)
                 {
                     xoff += spr->xoffset;
                     yoff += spr->yoffset;
@@ -540,7 +539,7 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
     //Draw white lines
     for (i=numsectors-1; i>=0; i--)
     {
-        if (!(show2dsector[i>>3]&pow2char[i&7])) continue;
+        if (!bitmap_test(show2dsector, i)) continue;
 
         startwall = sector[i].wallptr;
         endwall = sector[i].wallptr + sector[i].wallnum;
@@ -626,16 +625,16 @@ static void G_DrawOverheadMap(int32_t cposx, int32_t cposy, int32_t czoom, int16
 
 #define printcoordsline(fmt, ...) do { \
     Bsprintf(tempbuf, fmt, ## __VA_ARGS__); \
-    printext256(20, y+=9, COLOR_WHITE, -1, tempbuf, 0); \
+    printext256(x, y+=9, COLOR_WHITE, -1, tempbuf, 0); \
 } while (0)
 
-#ifdef DEBUGGINGAIDS
+#if 1//def DEBUGGINGAIDS
 sprstat_t g_spriteStat;
 #endif
 
 static void G_PrintCoords(int32_t snum)
 {
-    const int32_t x = g_Debug ? 288 : 0;
+    const int32_t x = g_Debug ? 288 : 1;
     int32_t y = 0;
 
     auto const ps = g_player[snum].ps;
@@ -648,71 +647,73 @@ static void G_PrintCoords(int32_t snum)
         else if (g_netServer || ud.multimode > 1)
             y = 24;
     }
-    Bsprintf(tempbuf, "XYZ= (%d, %d, %d)", ps->pos.x, ps->pos.y, ps->pos.z);
-    printext256(x, y, COLOR_WHITE, -1, tempbuf, 0);
+    y -= 8;
+    printcoordsline("XYZ= (%d, %d, %d)", ps->pos.x, ps->pos.y, ps->pos.z);
     char ang[16], horiz[16], horizoff[16];
     fix16_to_str(ps->q16ang, ang, 2);
     fix16_to_str(ps->q16horiz, horiz, 2);
     fix16_to_str(ps->q16horizoff, horizoff, 2);
-    Bsprintf(tempbuf, "A/H/HO= %s, %s, %s", ang, horiz, horizoff);
-    printext256(x, y+9, COLOR_WHITE, -1, tempbuf, 0);
-    Bsprintf(tempbuf, "VEL= (%d, %d, %d) + (%d, %d, 0)",
+    printcoordsline("A/H/HO= %s, %s, %s", ang, horiz, horizoff);
+    printcoordsline("VEL= (%d, %d, %d) + (%d, %d, 0)",
         ps->vel.x>>14, ps->vel.y>>14, ps->vel.z, ps->fric.x>>5, ps->fric.y>>5);
-    printext256(x, y+18, COLOR_WHITE, -1, tempbuf, 0);
-    Bsprintf(tempbuf, "OG= %d  SBRIDGE=%d SBS=%d", ps->on_ground, ps->spritebridge, ps->sbs);
-    printext256(x, y+27, COLOR_WHITE, -1, tempbuf, 0);
+    printcoordsline("OG= %d  SBRIDGE=%d SBS=%d", ps->on_ground, ps->spritebridge, ps->sbs);
     if (sectnum >= 0)
-        Bsprintf(tempbuf, "SECT= %d (LO=%d EX=%d)", sectnum,
+        printcoordsline("SECT= %d (LO=%d EX=%d)", sectnum,
             TrackerCast(sector[sectnum].lotag), TrackerCast(sector[sectnum].extra));
     else
-        Bsprintf(tempbuf, "SECT= %d", sectnum);
-    printext256(x, y+36, COLOR_WHITE, -1, tempbuf, 0);
+        printcoordsline("SECT= %d", sectnum);
     //    Bsprintf(tempbuf,"SEED= %d",randomseed);
     //    printext256(x,y+45,COLOR_WHITE,-1,tempbuf,0);
-    y -= 9;
+    printcoordsline("FZ= %d CZ=%d", actor[ps->i].floorz, actor[ps->i].ceilingz);
+    printcoordsline("THOLD= %d", ps->transporter_hold);
+
+    if (ud.coords < 2)
+        return;
 
     y += 7;
-    Bsprintf(tempbuf, "THOLD= %d", ps->transporter_hold);
-    printext256(x, y+54, COLOR_WHITE, -1, tempbuf, 0);
-    Bsprintf(tempbuf, "GAMETIC= %u, TOTALCLOCK=%d", g_moveThingsCount, (int32_t) totalclock);
-    printext256(x, y+63, COLOR_WHITE, -1, tempbuf, 0);
-#ifdef DEBUGGINGAIDS
-    Bsprintf(tempbuf, "NUMSPRITES= %d", Numsprites);
-    printext256(x, y+72, COLOR_WHITE, -1, tempbuf, 0);
+    printcoordsline("GAMETIC= %u, TOTALCLOCK=%d", g_moveThingsCount, (int32_t) totalclock);
+#if 1//def DEBUGGINGAIDS
+    printcoordsline("NUMSPRITES= %d", Numsprites);
     if (g_moveThingsCount > g_spriteStat.lastgtic + REALGAMETICSPERSEC)
     {
         g_spriteStat.lastgtic = g_moveThingsCount;
         g_spriteStat.lastnumins = g_spriteStat.numins;
         g_spriteStat.numins = 0;
     }
-    Bsprintf(tempbuf, "INSERTIONS/s= %u", g_spriteStat.lastnumins);
-    printext256(x, y+81, COLOR_WHITE, -1, tempbuf, 0);
-    Bsprintf(tempbuf, "ONSCREEN= %d", g_spriteStat.numonscreen);
-    printext256(x, y+90, COLOR_WHITE, -1, tempbuf, 0);
-    y += 3*9;
+    printcoordsline("INSERTIONS/s= %u", g_spriteStat.lastnumins);
+    printcoordsline("ONSCREEN= %d", g_spriteStat.numonscreen);
 #endif
-    y += 7;
-    Bsprintf(tempbuf, "VR=%.03f  YX=%.03f", (double) dr_viewingrange/65536.0, (double) dr_yxaspect/65536.0);
-    printext256(x, y+72, COLOR_WHITE, -1, tempbuf, 0);
 
 #ifdef USE_OPENGL
-    if (ud.coords == 2)
+    if (ud.coords < 3)
+        return;
+
+    y += 7;
+    printcoordsline("VR=%.03f  YX=%.03f", (double) dr_viewingrange/65536.0, (double) dr_yxaspect/65536.0);
+    //   y=16;
+
+    printcoordsline("rendmode= %d", videoGetRenderMode());
+    printcoordsline("r_ambientlight= %.03f", r_ambientlight);
+
+    if (rendmode >= 3)
     {
-        y=16;
-
-        printcoordsline("rendmode = %d", videoGetRenderMode());
-        printcoordsline("r_ambientlight = %.03f", r_ambientlight);
-
-        if (rendmode >= 3)
-        {
-            if (rendmode==3)
-                printcoordsline("r_usenewshading = %d", r_usenewshading);
-# ifdef POLYMER
-            else
-                printcoordsline("r_pr_artmapping = %d", pr_artmapping);
+        if (!polymost_useindexedtextures()
+#ifdef POLYMER
+            && (rendmode != 4 || pr_artmapping)
 #endif
-            printcoordsline("r_usetileshades = %d", r_usetileshades);
+            )
+        {
+            printcoordsline("r_usenewshading= %d", r_usenewshading);
         }
+
+        if (rendmode == 3)
+            printcoordsline("r_useindexedcolortextures= %d", r_useindexedcolortextures);
+#ifdef POLYMER
+        else
+            printcoordsline("r_pr_artmapping= %d", pr_artmapping);
+#endif
+        printcoordsline("r_usetileshades= %d", r_usetileshades);
+        printcoordsline("r_texfilter= %s", glfiltermodes[gltexfiltermode].name);
     }
 #endif
 }
@@ -770,10 +771,13 @@ static void G_ShowCacheLocks(void)
     {
         if (g_sounds[i]->playing > 0)
         {
-            for (int j = 0, n = g_sounds[i]->playing; j < n; j++)
+            for (int j = 0; j < MAXSOUNDINSTANCES; j++)
             {
                 if (k >= ydim-12)
                     return;
+
+                if (g_sounds[i]->voices[j].handle <= 0)
+                    continue;
 
                 Bsprintf(tempbuf, "snd %d_%d: voice %d, ow %d", i, j, g_sounds[i]->voices[j].handle, g_sounds[i]->voices[j].owner);
                 printext256(160, k, COLOR_WHITE, -1, tempbuf, 1);
@@ -800,8 +804,8 @@ static void G_PrintFPS(void)
     static int32_t frameCount;
     static double cumulativeFrameDelay;
     static double lastFrameTime;
-    static float lastFPS, minFPS = FLT_MAX, maxFPS;
-    static double minGameUpdate = DBL_MAX, maxGameUpdate;
+    static float lastFPS, minFPS = std::numeric_limits<float>::max(), maxFPS;
+    static double minGameUpdate = std::numeric_limits<double>::max(), maxGameUpdate;
 
     double frameTime = timerGetFractionalTicks();
     double frameDelay = frameTime - lastFrameTime;
@@ -1029,7 +1033,7 @@ void G_DisplayRest(int32_t smoothratio)
     {
         const walltype *wal = &wall[sector[i].wallptr];
 
-        show2dsector[i>>3] |= pow2char[i&7];
+        bitmap_set(show2dsector, i);
         for (j=sector[i].wallnum; j>0; j--, wal++)
         {
             i = wal->nextsector;
@@ -1038,7 +1042,7 @@ void G_DisplayRest(int32_t smoothratio)
             if (wall[wal->nextwall].cstat&0x0071) continue;
             if (sector[i].lotag == 32767) continue;
             if (sector[i].ceilingz >= sector[i].floorz) continue;
-            show2dsector[i>>3] |= pow2char[i&7];
+            bitmap_set(show2dsector, i);
         }
     }
 
@@ -1569,11 +1573,12 @@ void gameDisplay3DRScreen()
 
             while (totalclock < (120 * 7) && !I_GeneralTrigger())
             {
+                gameHandleEvents();
+
                 if (engineFPSLimit(true))
                 {
                     videoClearScreen(0);
                     rotatesprite_fs(160 << 16, 100 << 16, 65536L, 0, DREALMS, 0, 0, 2 + 8 + 64 + BGSTRETCH);
-                    gameHandleEvents();
 
                     if (g_restorePalette)
                     {
@@ -2641,4 +2646,3 @@ void G_BonusScreen(int32_t bonusonly)
         }
     } while (1);
 }
-

@@ -558,7 +558,7 @@ void packPrevItem(PLAYER *pPlayer)
 {
     if (pPlayer->packItemTime > 0)
     {
-        for (int nPrev = ClipLow(pPlayer->packItemId-1,kPackMedKit); nPrev >= kPackMedKit; nPrev--)
+        for (int nPrev = ClipLow(pPlayer->packItemId-1,kPackBase); nPrev >= kPackBase; nPrev--)
         {
             if (pPlayer->packSlots[nPrev].curAmount)
             {
@@ -675,7 +675,7 @@ void playerStart(int nPlayer, int bNewLevel)
     // normal start position
     if (gGameOptions.nGameType <= 1)
         pStartZone = &gStartZone[nPlayer];
-    
+
     #ifdef NOONE_EXTENSIONS
     // let's check if there is positions of teams is specified
     // if no, pick position randomly, just like it works in vanilla.
@@ -764,8 +764,10 @@ void playerStart(int nPlayer, int bNewLevel)
     pPlayer->aimTarget = -1;
     pPlayer->zViewVel = pPlayer->zWeaponVel;
     if (!(gGameOptions.nGameType == kGameTypeCoop && gGameOptions.bPlayerKeys > PLAYERKEYSMODE::LOSTONDEATH && !bNewLevel))
+    {
         for (int i = 0; i < 8; i++)
             pPlayer->hasKey[i] = gGameOptions.nGameType >= kGameTypeBloodBath;
+    }
     pPlayer->hasFlag = 0;
     for (int i = 0; i < 8; i++)
         pPlayer->used2[i] = -1;
@@ -1049,6 +1051,7 @@ char PickupItem(PLAYER *pPlayer, spritetype *pItem) {
         return 0;
         case kItemFlagA: {
             if (gGameOptions.nGameType != kGameTypeTeams) return 0;
+            evKill(pItem->index, 3, kCallbackReturnFlag);
             gBlueFlagDropped = false;
             pPlayer->hasFlag |= 1;
             pPlayer->used2[0] = pItem->owner;
@@ -1063,6 +1066,7 @@ char PickupItem(PLAYER *pPlayer, spritetype *pItem) {
         }
         case kItemFlagB: {
             if (gGameOptions.nGameType != kGameTypeTeams) return 0;
+            evKill(pItem->index, 3, kCallbackReturnFlag);
             gRedFlagDropped = false;
             pPlayer->hasFlag |= 2;
             pPlayer->used2[1] = pItem->owner;
@@ -1382,7 +1386,8 @@ void ProcessInput(PLAYER *pPlayer)
         pPlayer->restTime = 0;
     else if (pPlayer->restTime >= 0)
         pPlayer->restTime += kTicsPerFrame;
-    WeaponProcess(pPlayer);
+    if (VanillaMode() || pXSprite->health == 0)
+        WeaponProcess(pPlayer);
     if (pXSprite->health == 0)
     {
         char bSeqStat = playerSeqPlaying(pPlayer, 16);
@@ -1480,7 +1485,12 @@ void ProcessInput(PLAYER *pPlayer)
         }
     }
     if (pInput->q16turn)
-        pPlayer->q16ang = (pPlayer->q16ang+pInput->q16turn)&0x7ffffff;
+    {
+        if (bVanilla)
+            pPlayer->q16ang = ((pPlayer->q16ang&0x7ff0000)+(pInput->q16turn&0x7ff0000))&0x7ffffff;
+        else
+            pPlayer->q16ang = (pPlayer->q16ang+pInput->q16turn)&0x7ffffff;
+    }
     if (pInput->keyFlags.spin180)
     {
         if (!pPlayer->spin)
@@ -1703,6 +1713,8 @@ void ProcessInput(PLAYER *pPlayer)
             pPlayer->q16slopehoriz = 0;
     }
     pPlayer->slope = (-fix16_to_int(pPlayer->q16horiz))<<7;
+    if (!VanillaMode())
+        WeaponProcess(pPlayer);
     if (pInput->keyFlags.prevItem)
     {
         pInput->keyFlags.prevItem = 0;
@@ -1936,7 +1948,7 @@ void playerFrag(PLAYER *pKiller, PLAYER *pVictim)
         if (VanillaMode() || gGameOptions.nGameType != kGameTypeCoop)
         {
             pKiller->fragCount++;
-            pKiller->fragInfo[nKiller]++;
+            pKiller->fragInfo[nVictim]++;
         }
         if (gGameOptions.nGameType == kGameTypeTeams)
         {

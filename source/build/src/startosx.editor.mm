@@ -172,14 +172,12 @@ static int retval = -1;
 
 static struct {
     int fullscreen;
-    int xdim2d, ydim2d;
     int xdim3d, ydim3d, bpp3d;
     int forcesetup;
 } settings;
 
 @interface StartupWindow : NSWindow <NSWindowDelegate>
 {
-    NSMutableArray *modeslist2d;
     NSMutableArray *modeslist3d;
 
     NSButton *alwaysShowButton;
@@ -188,7 +186,6 @@ static struct {
     NSTabView *tabView;
     NSTabViewItem *tabViewItemSetup;
     NSTabViewItem *tabViewItemMessageLog;
-    NSPopUpButton *videoMode2DPUButton;
     NSPopUpButton *videoMode3DPUButton;
 
     NSButton *cancelButton;
@@ -292,12 +289,7 @@ static struct {
 
 
         // video mode selectors and labels
-        NSTextField * label2DVideoMode = makeLabel(@"2D Video mode:");
-        [[tabViewItemSetup view] addSubview:label2DVideoMode];
-        NSSize const label2DVideoModeSize = [label2DVideoMode frame].size;
-        [label2DVideoMode setAutoresizingMask:NSViewMaxXMargin | NSViewMinYMargin];
-
-        NSTextField * label3DVideoMode = makeLabel(@"3D Video mode:");
+        NSTextField * label3DVideoMode = makeLabel(@"Video mode:");
         [[tabViewItemSetup view] addSubview:label3DVideoMode];
         NSSize const label3DVideoModeSize = [label3DVideoMode frame].size;
         [label3DVideoMode setAutoresizingMask:NSViewMaxXMargin | NSViewMinYMargin];
@@ -308,26 +300,15 @@ static struct {
         [fullscreenButton setAction:@selector(fullscreenClicked:)];
         [fullscreenButton setAutoresizingMask:NSViewMinXMargin | NSViewMinYMargin];
 
-        CGFloat const labelsVideoModeRightEdge = max(label2DVideoModeSize.width, label3DVideoModeSize.width);
-
-        videoMode2DPUButton = makeComboBox();
-        [[tabViewItemSetup view] addSubview:videoMode2DPUButton];
-        NSSize const videoMode2DPUButtonSize = [videoMode2DPUButton frame].size;
-        CGFloat const videoMode2DButtonX = labelsVideoModeRightEdge;
-        NSRect const videoMode2DPUButtonFrame = NSMakeRect(videoMode2DButtonX, tabViewItemSetupFrame.size.height - videoMode2DPUButtonSize.height, tabViewItemSetupFrame.size.width - videoMode2DButtonX - fullscreenButtonSize.width, videoMode2DPUButtonSize.height);
-        [videoMode2DPUButton setFrame:videoMode2DPUButtonFrame];
-        [videoMode2DPUButton setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
+        CGFloat const labelsVideoModeRightEdge = label3DVideoModeSize.width;
 
         videoMode3DPUButton = makeComboBox();
         [[tabViewItemSetup view] addSubview:videoMode3DPUButton];
         NSSize const videoMode3DPUButtonSize = [videoMode3DPUButton frame].size;
         CGFloat const videoMode3DButtonX = labelsVideoModeRightEdge;
-        NSRect const videoMode3DPUButtonFrame = NSMakeRect(videoMode3DButtonX, videoMode2DPUButtonFrame.origin.y - videoMode3DPUButtonSize.height, tabViewItemSetupFrame.size.width - videoMode3DButtonX - fullscreenButtonSize.width, videoMode3DPUButtonSize.height);
+        NSRect const videoMode3DPUButtonFrame = NSMakeRect(videoMode3DButtonX, tabViewItemSetupFrame.size.height - videoMode3DPUButtonSize.height, tabViewItemSetupFrame.size.width - videoMode3DButtonX - fullscreenButtonSize.width, videoMode3DPUButtonSize.height);
         [videoMode3DPUButton setFrame:videoMode3DPUButtonFrame];
         [videoMode3DPUButton setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin];
-
-        NSRect const label2DVideoModeFrame = NSSizeAddXY(label2DVideoModeSize, 0, videoMode2DPUButtonFrame.origin.y + rintf((videoMode2DPUButtonSize.height - label2DVideoModeSize.height) * 0.5f) + 1);
-        [label2DVideoMode setFrame:label2DVideoModeFrame];
 
         NSRect const label3DVideoModeFrame = NSSizeAddXY(label3DVideoModeSize, 0, videoMode3DPUButtonFrame.origin.y + rintf((videoMode3DPUButtonSize.height - label3DVideoModeSize.height) * 0.5f) + 1);
         [label3DVideoMode setFrame:label3DVideoModeFrame];
@@ -400,27 +381,20 @@ static struct {
 - (void)populateVideoModes:(BOOL)firstTime
 {
     int i, mode3d, fullscreen = ([fullscreenButton state] == NSControlStateValueOn);
-    int mode2d, idx2d = -1;
     int idx3d = -1;
-    int xdim2d = 0, ydim2d = 0;
-    int const bpp2d = 8;
     int xdim = 0, ydim = 0, bpp = 0;
 
-    if (firstTime) {
-        xdim2d = settings.xdim2d;
-        ydim2d = settings.ydim2d;
+    if (firstTime)
+    {
         xdim = settings.xdim3d;
         ydim = settings.ydim3d;
         bpp  = settings.bpp3d;
-    } else {
-        mode2d = [[modeslist2d objectAtIndex:[videoMode2DPUButton indexOfSelectedItem]] intValue];
-        if (mode2d >= 0) {
-            xdim2d = validmode[mode2d].xdim;
-            ydim2d = validmode[mode2d].ydim;
-        }
-
+    }
+    else
+    {
         mode3d = [[modeslist3d objectAtIndex:[videoMode3DPUButton indexOfSelectedItem]] intValue];
-        if (mode3d >= 0) {
+        if (mode3d >= 0)
+        {
             xdim = validmode[mode3d].xdim;
             ydim = validmode[mode3d].ydim;
             bpp = validmode[mode3d].bpp;
@@ -428,30 +402,13 @@ static struct {
     }
 
 
-    mode2d = videoCheckMode(&xdim2d, &ydim2d, bpp2d, fullscreen, 1);
-
-    [modeslist2d release];
-    [videoMode2DPUButton removeAllItems];
-
-    modeslist2d = [[NSMutableArray alloc] init];
-
-    for (i = 0; i < validmodecnt; i++) {
-        if (fullscreen == validmode[i].fs) {
-            if (i == mode2d) idx2d = [modeslist2d count];
-            [modeslist2d addObject:[NSNumber numberWithInt:i]];
-            [videoMode2DPUButton addItemWithTitle:[NSString stringWithFormat:@"%d %C %d",
-                                                   validmode[i].xdim, 0xd7, validmode[i].ydim]];
-        }
-    }
-
-    if (idx2d >= 0) [videoMode2DPUButton selectItemAtIndex:idx2d];
-
-
     mode3d = videoCheckMode(&xdim, &ydim, bpp, fullscreen, 1);
-    if (mode3d < 0) {
+    if (mode3d < 0)
+    {
         int i, cd[] = { 32, 24, 16, 15, 8, 0 };
         for (i=0; cd[i]; ) { if (cd[i] >= bpp) i++; else break; }
-        for ( ; cd[i]; i++) {
+        for ( ; cd[i]; i++)
+        {
             mode3d = videoCheckMode(&xdim, &ydim, cd[i], fullscreen, 1);
             if (mode3d < 0) continue;
             break;
@@ -463,8 +420,10 @@ static struct {
 
     modeslist3d = [[NSMutableArray alloc] init];
 
-    for (i = 0; i < validmodecnt; i++) {
-        if (fullscreen == validmode[i].fs) {
+    for (i = 0; i < validmodecnt; i++)
+    {
+        if (fullscreen == validmode[i].fs)
+        {
             if (i == mode3d) idx3d = [modeslist3d count];
             [modeslist3d addObject:[NSNumber numberWithInt:i]];
             [videoMode3DPUButton addItemWithTitle:[NSString stringWithFormat:@"%d %C %d %d-bpp",
@@ -493,15 +452,9 @@ static struct {
 {
     UNREFERENCED_PARAMETER(sender);
 
-    int mode2d = [[modeslist2d objectAtIndex:[videoMode2DPUButton indexOfSelectedItem]] intValue];
-    if (mode2d >= 0) {
-        settings.xdim2d = validmode[mode2d].xdim;
-        settings.ydim2d = validmode[mode2d].ydim;
-        settings.fullscreen = validmode[mode2d].fs;
-    }
-
     int mode = [[modeslist3d objectAtIndex:[videoMode3DPUButton indexOfSelectedItem]] intValue];
-    if (mode >= 0) {
+    if (mode >= 0)
+    {
         settings.xdim3d = validmode[mode].xdim;
         settings.ydim3d = validmode[mode].ydim;
         settings.bpp3d = validmode[mode].bpp;
@@ -570,7 +523,8 @@ static struct {
     [messagesView replaceCharactersInRange:end withString:str];
     [text endEditing];
 
-    if (shouldAutoScroll) {
+    if (shouldAutoScroll)
+    {
         end.location = [text length];
         end.length = 0;
         [messagesView scrollRangeToVisible:end];
@@ -580,6 +534,11 @@ static struct {
 @end
 
 static StartupWindow *startwin = nil;
+
+bool startwin_isopen(void)
+{
+    return startwin != nil;
+}
 
 int startwin_open(void)
 {
@@ -664,10 +623,8 @@ int startwin_run(void)
     if (startwin == nil) return 0;
 
     settings.fullscreen = fullscreen;
-    settings.xdim2d = xdim2d;
-    settings.ydim2d = ydim2d;
-    settings.xdim3d = xdimgame;
-    settings.ydim3d = ydimgame;
+    settings.xdim3d = xdim;
+    settings.ydim3d = ydim;
     settings.bpp3d = bppgame;
     settings.forcesetup = forcesetup;
 
@@ -684,12 +641,11 @@ int startwin_run(void)
     [startwin setupMessagesMode];
     [nsapp updateWindows];
 
-    if (retval) {
+    if (retval)
+    {
         fullscreen = settings.fullscreen;
-        xdim2d = settings.xdim2d;
-        ydim2d = settings.ydim2d;
-        xdimgame = settings.xdim3d;
-        ydimgame = settings.ydim3d;
+        xdim = settings.xdim3d;
+        ydim = settings.ydim3d;
         bppgame = settings.bpp3d;
         forcesetup = settings.forcesetup;
     }

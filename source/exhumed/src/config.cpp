@@ -35,7 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "config.h"
 
-#include <string>
+#include <string.h>
 //#include <io.h>
 #include <stdio.h>
 #include <time.h>
@@ -211,7 +211,8 @@ static const char* mousedigitaldefaults[MAXMOUSEDIGITAL] =
 
 ud_setup_t gSetup;
 
-char setupfilename[BMAX_PATH] = {kSetupFilename};
+#define kSetupFilename  APPBASENAME ".cfg"
+char setupfilename[BMAX_PATH] = kSetupFilename;
 
 int lMouseSens = 32;
 unsigned int dword_1B82E0 = 0;
@@ -417,7 +418,7 @@ void CONFIG_SetDefaultKeys(const char (*keyptr)[kMaxGameFuncLen], bool lazy/*=fa
         {
 #if 0 // defined(DEBUGGINGAIDS)
             if (key[0] != 0xff)
-                initprintf("Skipping %s bound to %s\n", keyptr[i<<1], CONTROL_KeyBinds[default0].cmdstr);
+                LOG_F(INFO, "Skipping %s bound to %s", keyptr[i<<1], CONTROL_KeyBinds[default0].cmdstr);
 #endif
             continue;
         }
@@ -581,12 +582,12 @@ int CONFIG_ReadSetup()
 
         if (!buildvfs_isdir(g_modDir))
         {
-            initprintf("Invalid mod dir in cfg!\n");
+            LOG_F(ERROR, "Invalid mod dir in cfg!");
             Bsprintf(g_modDir,"/");
         }
     }
 
-    SCRIPT_GetNumber(scripthandle, "Screen Setup", "MaxRefreshFreq", &maxrefreshfreq);
+    SCRIPT_GetNumber(scripthandle, "Screen Setup", "MaxRefreshFreq", (int32_t *)&maxrefreshfreq);
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenBPP", &gSetup.bpp);
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenHeight", &gSetup.ydim);
     SCRIPT_GetNumber(scripthandle, "Screen Setup", "ScreenMode", &gSetup.fullscreen);
@@ -791,7 +792,7 @@ void SetupInput()
 {
     if (CONTROL_Startup(controltype_keyboardandmouse, &BGetTime, kTimerTicks))
     {
-        ERRprintf("There was an error initializing the CONTROL system.\n");
+        LOG_F(ERROR, "There was an error initializing the CONTROL system.");
         engineUnInit();
         Bexit(5);
     }
@@ -817,7 +818,7 @@ void CONFIG_WriteSettings(void) // save binds and aliases to <cfgname>_settings.
         Bsprintf(filename, "%s_settings.cfg", strtok(setupfilename, "."));
 	*/
 
-    Bsprintf(filename, "pcexhumed_cvars.cfg");
+    Bsprintf(filename, APPBASENAME "_cvars.cfg");
 
     buildvfs_FILE fp = buildvfs_fopen_write(filename);
 

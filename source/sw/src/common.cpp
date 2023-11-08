@@ -151,6 +151,18 @@ static void SW_AddSteamPaths(const char *basepath)
 #endif
 #endif
 
+#if defined __linux__ || defined EDUKE32_BSD || defined EDUKE32_OSX
+static void SW_AddPathAndMusic(const char *path)
+{
+    char buf[BMAX_PATH];
+
+    Bsnprintf(buf, sizeof(buf), "%s", path);
+    addsearchpath(buf);
+    Bsnprintf(buf, sizeof(buf), "%s/music", path);
+    addsearchpath(buf);
+}
+#endif
+
 static void SW_AddSearchPaths()
 {
 #ifndef EDUKE32_STANDALONE
@@ -158,11 +170,21 @@ static void SW_AddSearchPaths()
 #if defined __linux__ || defined EDUKE32_BSD
     char buf[BMAX_PATH];
     char *homepath = Bgethomedir();
+    const char *xdg_docs_path = getenv("XDG_DOCUMENTS_DIR");
+    const char *xdg_config_path = getenv("XDG_CONFIG_HOME");
 
+    // Steam
     Bsnprintf(buf, sizeof(buf), "%s/.steam/steam", homepath);
     SW_AddSteamPaths(buf);
 
     Bsnprintf(buf, sizeof(buf), "%s/.steam/steam/steamapps/libraryfolders.vdf", homepath);
+    Paths_ParseSteamLibraryVDF(buf, SW_AddSteamPaths);
+
+    // Steam Flatpak
+    Bsnprintf(buf, sizeof(buf), "%s/.var/app/com.valvesoftware.Steam/.steam/steam", homepath);
+    SW_AddSteamPaths(buf);
+
+    Bsnprintf(buf, sizeof(buf), "%s/.var/app/com.valvesoftware.Steam/.steam/steam/steamapps/libraryfolders.vdf", homepath);
     Paths_ParseSteamLibraryVDF(buf, SW_AddSteamPaths);
 
     // Shadow Warrior Classic Redux - GOG.com
@@ -175,12 +197,27 @@ static void SW_AddSearchPaths()
     SW_Add_GOG_SWCC_Linux(buf);
     Paths_ParseXDGDesktopFilesFromGOG(homepath, "Shadow_Warrior_Classic_Complete", SW_Add_GOG_SWCC_Linux);
 
+    if (xdg_config_path) {
+        Bsnprintf(buf, sizeof(buf), "%s/" APPBASENAME, xdg_config_path);
+        SW_AddPathAndMusic(buf);
+    }
+
+    if (xdg_docs_path) {
+        Bsnprintf(buf, sizeof(buf), "%s/" APPNAME, xdg_docs_path);
+        SW_AddPathAndMusic(buf);
+    }
+    else {
+        Bsnprintf(buf, sizeof(buf), "%s/Documents/" APPNAME, homepath);
+        SW_AddPathAndMusic(buf);
+    }
+
     Xfree(homepath);
 
-    addsearchpath("/usr/share/games/jfsw");
-    addsearchpath("/usr/local/share/games/jfsw");
-    addsearchpath("/usr/share/games/voidsw");
-    addsearchpath("/usr/local/share/games/voidsw");
+    SW_AddPathAndMusic("/usr/share/games/jfsw");
+    SW_AddPathAndMusic("/usr/local/share/games/jfsw");
+    SW_AddPathAndMusic("/usr/share/games/" APPBASENAME);
+    SW_AddPathAndMusic("/usr/local/share/games/" APPBASENAME);
+    SW_AddPathAndMusic("/app/extensions/extra");
 #elif defined EDUKE32_OSX
     char buf[BMAX_PATH];
     int32_t i;
@@ -215,9 +252,9 @@ static void SW_AddSearchPaths()
     for (i = 0; i < 2; i++)
     {
         Bsnprintf(buf, sizeof(buf), "%s/JFSW", support[i]);
-        addsearchpath(buf);
-        Bsnprintf(buf, sizeof(buf), "%s/VoidSW", support[i]);
-        addsearchpath(buf);
+        SW_AddPathAndMusic(buf);
+        Bsnprintf(buf, sizeof(buf), "%s/" APPNAME, support[i]);
+        SW_AddPathAndMusic(buf);
     }
 
     for (i = 0; i < 2; i++)
@@ -401,7 +438,7 @@ void SW_ExtInit()
         {
             clearGrpNamePtr();
             g_grpNamePtr = dup_filename(cp);
-            initprintf("Using \"%s\" as main GRP file\n", g_grpNamePtr);
+            LOG_F(INFO, "Using \"%s\" as main GRP file", g_grpNamePtr);
         }
     }
 #endif
@@ -435,10 +472,10 @@ static int32_t SW_TryLoadingGrp(char const * const grpfile, internalgrpfile cons
     int32_t i;
 
     if ((i = initgroupfile(grpfile)) == -1)
-        initprintf("Warning: could not find main data file \"%s\"!\n", grpfile);
+        LOG_F(WARNING, "Could not find main data file \"%s\"!", grpfile);
     else
     {
-        initprintf("Using \"%s\" as main game data file.\n", grpfile);
+        LOG_F(INFO, "Using \"%s\" as main game data file.", grpfile);
         if (type)
         {
             if (type->postprocessing)

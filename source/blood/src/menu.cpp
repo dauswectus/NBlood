@@ -476,13 +476,19 @@ const int nRendererValues[] = {
 const char *pzVSyncStrings[] = {
     "ADAPTIVE",
     "OFF",
-    "ON"
+    "ON",
+#if defined USE_OPENGL && defined _WIN32 && defined RENDERTYPESDL
+    "KMT"
+#endif
 };
 
 const int nVSyncValues[] = {
     -1,
     0,
-    1
+    1,
+#if defined USE_OPENGL && defined _WIN32 && defined RENDERTYPESDL
+    2
+#endif
 };
 
 const char *pzFrameLimitStrings[] = {
@@ -514,7 +520,7 @@ CGameMenuItemTitle itemOptionsDisplayModeTitle("VIDEO MODE", 1, 160, 20, 2038);
 CGameMenuItemZCycle itemOptionsDisplayModeResolution("RESOLUTION:", 3, 66, 60, 180, 0, NULL, NULL, 0, 0, true);
 CGameMenuItemZCycle itemOptionsDisplayModeRenderer("RENDERER:", 3, 66, 70, 180, 0, NULL, pzRendererStrings, 2, 0);
 CGameMenuItemZBool itemOptionsDisplayModeFullscreen("FULLSCREEN:", 3, 66, 80, 180, 0, NULL, NULL, NULL);
-CGameMenuItemZCycle itemOptionsDisplayModeVSync("VSYNC:", 3, 66, 90, 180, 0, NULL, pzVSyncStrings, 3, 0);
+CGameMenuItemZCycle itemOptionsDisplayModeVSync("VSYNC:", 3, 66, 90, 180, 0, NULL, pzVSyncStrings, ARRAY_SSIZE(pzVSyncStrings), 0);
 CGameMenuItemZCycle itemOptionsDisplayModeFrameLimit("FRAMERATE LIMIT:", 3, 66, 100, 180, 0, UpdateVideoModeMenuFrameLimit, pzFrameLimitStrings, 8, 0);
 // CGameMenuItemSlider itemOptionsDisplayModeFPSOffset("FPS OFFSET:", 3, 66, 110, 180, 0, -10, 10, 1, UpdateVideoModeMenuFPSOffset, -1, -1, kMenuSliderValue);
 CGameMenuItemChain itemOptionsDisplayModeApply("APPLY CHANGES", 3, 66, 125, 180, 0, NULL, 0, SetVideoMode, 0);
@@ -522,9 +528,9 @@ CGameMenuItemChain itemOptionsDisplayModeApply("APPLY CHANGES", 3, 66, 125, 180,
 void PreDrawDisplayColor(CGameMenuItem *);
 
 CGameMenuItemTitle itemOptionsDisplayColorTitle("COLOR CORRECTION", 1, 160, 20, -1);
-CGameMenuItemSliderFloat itemOptionsDisplayColorGamma("GAMMA:", 3, 66, 140, 180, &g_videoGamma, 0.3f, 4.f, 0.1f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
-CGameMenuItemSliderFloat itemOptionsDisplayColorContrast("CONTRAST:", 3, 66, 150, 180, &g_videoContrast, 0.1f, 2.7f, 0.05f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
-CGameMenuItemSliderFloat itemOptionsDisplayColorBrightness("BRIGHTNESS:", 3, 66, 160, 180, &g_videoBrightness, -0.8f, 0.8f, 0.05f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
+CGameMenuItemSliderFloat itemOptionsDisplayColorGamma("GAMMA:", 3, 66, 140, 180, &g_videoGamma, MIN_GAMMA, MAX_GAMMA, 0.1f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
+CGameMenuItemSliderFloat itemOptionsDisplayColorContrast("CONTRAST:", 3, 66, 150, 180, &g_videoContrast, MIN_CONTRAST, MAX_CONTRAST, 0.05f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
+CGameMenuItemSliderFloat itemOptionsDisplayColorSaturation("SATURATION:", 3, 66, 160, 180, &g_videoSaturation, MIN_SATURATION, MAX_SATURATION, 0.05f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
 CGameMenuItemSliderFloat itemOptionsDisplayColorVisibility("VISIBILITY:", 3, 66, 170, 180, &r_ambientlight, 0.125f, 4.f, 0.125f, UpdateVideoColorMenu, -1, -1, kMenuSliderValue);
 CGameMenuItemChain itemOptionsDisplayColorReset("RESET TO DEFAULTS", 3, 66, 180, 180, 0, NULL, 0, ResetVideoColor, 0);
 
@@ -580,6 +586,7 @@ void UpdateDetailTex(CGameMenuItemZBool *pItem);
 void UpdateGlowTex(CGameMenuItemZBool *pItem);
 void Update3DModels(CGameMenuItemZBool *pItem);
 void UpdateDeliriumBlur(CGameMenuItemZBool *pItem);
+void UpdateYShrearing(CGameMenuItemZBool *pItem);
 #ifdef USE_OPENGL
 void PreDrawDisplayPolymost(CGameMenuItem *pItem);
 CGameMenuItemTitle itemOptionsDisplayPolymostTitle("POLYMOST SETUP", 1, 160, 20, 2038);
@@ -593,6 +600,7 @@ CGameMenuItemZBool itemOptionsDisplayPolymostDetailTex("DETAIL TEXTURES:", 3, 66
 CGameMenuItemZBool itemOptionsDisplayPolymostGlowTex("GLOW TEXTURES:", 3, 66, 130, 180, 0, UpdateGlowTex, NULL, NULL);
 CGameMenuItemZBool itemOptionsDisplayPolymost3DModels("3D MODELS:", 3, 66, 140, 180, 0, Update3DModels, NULL, NULL);
 CGameMenuItemZBool itemOptionsDisplayPolymostDeliriumBlur("DELIRIUM EFFECT BLUR:", 3, 66, 150, 180, 0, UpdateDeliriumBlur, NULL, NULL);
+CGameMenuItemZBool itemOptionsDisplayPolymostYShearing("Y-SHEARING:", 3, 66, 160, 180, 0, UpdateYShrearing, NULL, NULL);
 #endif
 
 void UpdateSoundToggle(CGameMenuItemZBool *pItem);
@@ -962,6 +970,10 @@ void SetupMainMenu(void)
     menuMain.Add(&itemMain6, false);
     menuMain.Add(&itemMain7, false);
     menuMain.Add(&itemBloodQAV, false);
+
+#ifdef NETCODE_DISABLE
+    itemMain2.bEnable = 0; // disable multiplayer menu item for non-netcode build
+#endif
 }
 
 void SetupMainMenuWithSave(void)
@@ -1318,13 +1330,13 @@ void SetupOptionsMenu(void)
     menuOptionsDisplayColor.Add(&itemOptionsDisplayColorTitle, false);
     menuOptionsDisplayColor.Add(&itemOptionsDisplayColorGamma, true);
     menuOptionsDisplayColor.Add(&itemOptionsDisplayColorContrast, false);
-    menuOptionsDisplayColor.Add(&itemOptionsDisplayColorBrightness, false);
+    menuOptionsDisplayColor.Add(&itemOptionsDisplayColorSaturation, false);
     menuOptionsDisplayColor.Add(&itemOptionsDisplayColorVisibility, false);
     menuOptionsDisplayColor.Add(&itemOptionsDisplayColorReset, false);
     menuOptionsDisplayColor.Add(&itemBloodQAV, false);
 
     itemOptionsDisplayColorContrast.pPreDrawCallback = PreDrawDisplayColor;
-    itemOptionsDisplayColorBrightness.pPreDrawCallback = PreDrawDisplayColor;
+    itemOptionsDisplayColorSaturation.pPreDrawCallback = PreDrawDisplayColor;
 
 #ifdef USE_OPENGL
     menuOptionsDisplayPolymost.Add(&itemOptionsDisplayPolymostTitle, false);
@@ -1338,6 +1350,7 @@ void SetupOptionsMenu(void)
     menuOptionsDisplayPolymost.Add(&itemOptionsDisplayPolymostGlowTex, false);
     menuOptionsDisplayPolymost.Add(&itemOptionsDisplayPolymost3DModels, false);
     menuOptionsDisplayPolymost.Add(&itemOptionsDisplayPolymostDeliriumBlur, false);
+    menuOptionsDisplayPolymost.Add(&itemOptionsDisplayPolymostYShearing, false);
     menuOptionsDisplayPolymost.Add(&itemBloodQAV, false);
 
     itemOptionsDisplayPolymostTexQuality.pPreDrawCallback = PreDrawDisplayPolymost;
@@ -1878,7 +1891,7 @@ void SetupVideoModeMenu(CGameMenuItemChain *pItem)
         }
     }
 #endif
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < itemOptionsDisplayModeVSync.m_nItems; i++)
     {
         if (vsync == nVSyncValues[i])
         {
@@ -1886,9 +1899,10 @@ void SetupVideoModeMenu(CGameMenuItemChain *pItem)
             break;
         }
     }
+    const int kMaxFps = r_maxfps == -1 ? refreshfreq : r_maxfps;
     for (int i = 0; i < 8; i++)
     {
-        if (r_maxfps == nFrameLimitValues[i])
+        if (kMaxFps == nFrameLimitValues[i])
         {
             itemOptionsDisplayModeFrameLimit.m_nFocus = i;
             break;
@@ -1924,7 +1938,7 @@ void UpdateVideoColorMenu(CGameMenuItemSliderFloat *pItem)
     UNREFERENCED_PARAMETER(pItem);
     g_videoGamma = itemOptionsDisplayColorGamma.fValue;
     g_videoContrast = itemOptionsDisplayColorContrast.fValue;
-    g_videoBrightness = itemOptionsDisplayColorBrightness.fValue;
+    g_videoSaturation = itemOptionsDisplayColorSaturation.fValue;
     r_ambientlight = itemOptionsDisplayColorVisibility.fValue;
     r_ambientlightrecip = 1.f/r_ambientlight;
     gBrightness = GAMMA_CALC<<2;
@@ -1935,7 +1949,7 @@ void PreDrawDisplayColor(CGameMenuItem *pItem)
 {
     if (pItem == &itemOptionsDisplayColorContrast)
         pItem->bEnable = gammabrightness;
-    else if (pItem == &itemOptionsDisplayColorBrightness)
+    else if (pItem == &itemOptionsDisplayColorSaturation)
         pItem->bEnable = gammabrightness;
 }
 
@@ -1944,7 +1958,7 @@ void ResetVideoColor(CGameMenuItemChain *pItem)
     UNREFERENCED_PARAMETER(pItem);
     g_videoGamma = DEFAULT_GAMMA;
     g_videoContrast = DEFAULT_CONTRAST;
-    g_videoBrightness = DEFAULT_BRIGHTNESS;
+    g_videoSaturation = DEFAULT_SATURATION;
     gBrightness = 0;
     r_ambientlight = r_ambientlightrecip = 1.f;
     videoSetPalette(gBrightness>>2, gLastPal, 0);
@@ -1980,6 +1994,7 @@ void SetupVideoPolymostMenu(CGameMenuItemChain *pItem)
     itemOptionsDisplayPolymostGlowTex.at20 = r_glowmapping;
     itemOptionsDisplayPolymost3DModels.at20 = usemodels;
     itemOptionsDisplayPolymostDeliriumBlur.at20 = gDeliriumBlur;
+    itemOptionsDisplayPolymostYShearing.at20 = r_yshearing;
 }
 
 void UpdateTextureMode(CGameMenuItemZCycle *pItem)
@@ -2045,6 +2060,11 @@ void Update3DModels(CGameMenuItemZBool *pItem)
 void UpdateDeliriumBlur(CGameMenuItemZBool *pItem)
 {
     gDeliriumBlur = pItem->at20;
+}
+
+void UpdateYShrearing(CGameMenuItemZBool *pItem)
+{
+    r_yshearing = pItem->at20;
 }
 
 void PreDrawDisplayPolymost(CGameMenuItem *pItem)

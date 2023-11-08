@@ -173,6 +173,10 @@ void ReadGameSetup(int32_t scripthandle)
     if (dummy != -1) gs.Ambient = dummy;
 
     dummy = -1;
+    SCRIPT_GetNumber(scripthandle, "Options", "AltReverb",&dummy);
+    if (dummy != -1) gs.AltReverb = dummy;
+
+    dummy = -1;
     SCRIPT_GetNumber(scripthandle, "Options", "FxOn",&dummy);
     if (dummy != -1) gs.FxOn = dummy;
 
@@ -266,10 +270,10 @@ void ReadGameSetup(int32_t scripthandle)
         SCRIPT_GetNumber(scripthandle, "Options", "Chickens",&dummy);
         if (dummy != -1) GamePlays = dummy;
 
-        buildprintf(
+        LOG_F(INFO,
             "\n"
             "You have played Shadow Warrior %d times.  Please call and order the full\n"
-            "version at 1(800)-3DREALMS or see the ORDER.FRM file.\n\n"
+            "version at 1(800)-3DREALMS or see the ORDER.FRM file.\n"
             ,GamePlays);
 
         GamePlays++;
@@ -314,6 +318,8 @@ void WriteGameSetup(int32_t scripthandle)
     SCRIPT_PutNumber(scripthandle, "Options", "Talking",dummy,FALSE,FALSE);
     dummy = gs.Ambient;
     SCRIPT_PutNumber(scripthandle, "Options", "Ambient",dummy,FALSE,FALSE);
+    dummy = gs.AltReverb;
+    SCRIPT_PutNumber(scripthandle, "Options", "AltReverb",dummy,FALSE,FALSE);
     dummy = gs.FxOn;
     SCRIPT_PutNumber(scripthandle, "Options", "FxOn",dummy,FALSE,FALSE);
     dummy = gs.MouseAimingType;

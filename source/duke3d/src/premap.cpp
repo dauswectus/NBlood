@@ -30,14 +30,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "vfs.h"
 
-static uint8_t precachehightile[2][(MAXTILES+7)>>3];
+static uint8_t precachehightile[2][bitmap_size(MAXTILES)];
 static int32_t g_precacheCount;
 
 
 static int32_t NET_75_CHECK = 0;
 
 static void flag_precache(int32_t tile, int32_t type)
-{    
+{
     if (!bitmap_test(gotpic, tile))
         g_precacheCount++;
 
@@ -419,7 +419,7 @@ static void G_DoLoadScreen(const char *statustext, int percent)
 }
 
 static void cacheExtraTextureMaps(int tileNum, int type)
-{    
+{
 #ifdef USE_OPENGL
     for (int i = 0; i < MAXPALOOKUPS-RESERVEDPALS-1; i++)
     {
@@ -456,6 +456,8 @@ void G_CacheMapData(void)
 {
     if (ud.recstat == 2 || !ud.config.useprecache)
         return;
+
+    cacheAllSounds();
 
     g_precacheCount = 0;
     Bmemset(gotpic, 0, sizeof(gotpic));
@@ -501,7 +503,7 @@ void G_CacheMapData(void)
         if (bitmap_test(gotpic, i))
         {
             cnt++;
-            
+
             if (waloff[i] == 0)
                 tileLoad((int16_t)i);
 
@@ -516,12 +518,12 @@ void G_CacheMapData(void)
                 }
             }
 
-            gameHandleEvents();            
+            gameHandleEvents();
             if (KB_KeyPressed(sc_Space))
-                break;            
+                break;
         }
         i++;
-        
+
         if (cntDisplayed+(i&7) < cnt-(i&7) && engineFPSLimit(true))
         {
             int const percentComplete = min(100, tabledivide32(100 * cntDisplayed, g_precacheCount));
@@ -652,6 +654,9 @@ static inline void P_ResetTintFade(DukePlayer_t *const pPlayer)
 
 void P_ResetOffsets(DukePlayer_t *const pPlayer)
 {
+    pPlayer->floorzrebound = 768;
+    pPlayer->floorzcutoff  = 256;
+
     pPlayer->floorzoffset  = 40 << 8;
     pPlayer->waterzoffset  = 34 << 8;
     pPlayer->minwaterzdist = 16 << 8;
@@ -1029,7 +1034,7 @@ static void G_SetupRotfixedSprites(void)
 
 static void G_SetupLightSwitches()
 {
-    auto tagbitmap = (uint8_t *)Xcalloc(65536 >> 3, 1);
+    auto tagbitmap = (uint8_t *)Xcalloc(bitmap_size(65536), 1);
 
     for (int nextSprite, SPRITES_OF_STAT_SAFE(STAT_DEFAULT, spriteNum, nextSprite))
     {
@@ -1059,7 +1064,7 @@ static void G_SetupLightSwitches()
                     if (i == 0)
                     {
                         uint16_t const tag = s.lotag;
-                        tagbitmap[tag >> 3] |= 1 << (tag & 7);
+                        bitmap_set(tagbitmap, tag);
                     }
 
                     break;
@@ -1072,7 +1077,7 @@ static void G_SetupLightSwitches()
     {
         uint16_t const tag = sprite[j].hitag;
 
-        if (sprite[j].lotag == SE_12_LIGHT_SWITCH && tagbitmap[tag>>3] & pow2char[tag&7])
+        if (sprite[j].lotag == SE_12_LIGHT_SWITCH && bitmap_test(tagbitmap, tag))
             actor[j].t_data[0] = 1;
     }
 
@@ -1303,7 +1308,7 @@ static void prelevel(int g)
     //Bmemset(zhit, 0, sizeof(zhit));
     Bmemset(show2dsector, 0, sizeof(show2dsector));
 #ifdef LEGACY_ROR
-    Bmemset(ror_protectedsectors, 0, MAXSECTORS);
+    Bmemset(ror_protectedsectors, 0, sizeof(ror_protectedsectors));
 #endif
     g_cloudCnt = 0;
 
@@ -1709,6 +1714,11 @@ void G_ResetTimers(bool saveMoveCnt)
 
 void G_ClearFIFO(void)
 {
+    // [JM] Black-hole any leftover inputs.
+    // Prevents being spun around at map start if you move the mouse while loading.
+    ControlInfo blackHole;
+    CONTROL_GetInput(&blackHole);
+
     g_lastInputTicks = 0;
     localInput = {};
     Bmemset(&inputfifo, 0, sizeof(input_t) * MOVEFIFOSIZ * MAXPLAYERS);
@@ -1789,8 +1799,8 @@ static void G_LoadMapHack(char *outbuf, const char *filename)
 
     if (G_TryMapHack(outbuf) && usermaphacks != NULL)
     {
-        auto pMapInfo = (usermaphack_t *)bsearch(&g_loadedMapHack, usermaphacks, num_usermaphacks,
-                                                 sizeof(usermaphack_t), compare_usermaphacks);
+        auto pMapInfo = find_usermaphack();
+
         if (pMapInfo)
             G_TryMapHack(pMapInfo->mhkfile);
     }
@@ -1981,6 +1991,12 @@ int G_EnterLevel(int gameMode)
     else
     {
         G_LoadMapHack(levelName, m.filename);
+    }
+
+    if ((unsigned)p0.cursectnum >= (unsigned)numsectors)
+    {
+        LOG_F(ERROR, "Unable to load %s: bad player start point!", G_HaveUserMap() ? boardfilename : m.filename);
+        return 1;
     }
 
     p0.q16ang = fix16_from_int(playerAngle);

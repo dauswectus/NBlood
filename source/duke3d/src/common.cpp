@@ -250,6 +250,47 @@ void G_ExtPreInit(int32_t argc,char const * const * argv)
     buildvfs_getcwd(g_rootDir,BMAX_PATH);
     strcat(g_rootDir,"/");
 #endif
+    char cwd[BMAX_PATH];
+
+#ifdef USE_PHYSFS
+    strncpy(cwd, PHYSFS_getBaseDir(), ARRAY_SIZE(cwd));
+    cwd[ARRAY_SIZE(cwd)-1] = '\0';
+#else
+    if (buildvfs_getcwd(cwd, ARRAY_SIZE(cwd)) && Bstrcmp(cwd, "/") != 0)
+#endif
+        addsearchpath(cwd);
+
+#if defined(_WIN32) && !defined(EDUKE32_STANDALONE)
+    if (buildvfs_exists("user_profiles_enabled"))
+#else
+    if (g_useCwd == 0 && !buildvfs_exists("user_profiles_disabled"))
+#endif
+    {
+        char *homedir;
+        int32_t asperr;
+
+        if ((homedir = Bgethomedir()))
+        {
+            Bsnprintf(cwd, ARRAY_SIZE(cwd), "%s/"
+#if defined(_WIN32)
+                APPNAME
+#elif defined(GEKKO)
+                "apps/" APPBASENAME
+#else
+                ".config/" APPBASENAME
+#endif
+                ,homedir);
+            asperr = addsearchpath(cwd);
+            if (asperr == -2)
+            {
+                if (buildvfs_mkdir(cwd,S_IRWXU) == 0) asperr = addsearchpath(cwd);
+                else asperr = -1;
+            }
+            if (asperr == 0)
+                buildvfs_chdir(cwd);
+            Xfree(homedir);
+        }
+    }
 }
 
 void G_ExtInit(void)
@@ -259,15 +300,6 @@ void G_ExtInit(void)
     addsearchpath(appdir);
     Xfree(appdir);
 #endif
-
-    char cwd[BMAX_PATH];
-#ifdef USE_PHYSFS
-    strncpy(cwd, PHYSFS_getBaseDir(), ARRAY_SIZE(cwd));
-    cwd[ARRAY_SIZE(cwd)-1] = '\0';
-#else
-    if (buildvfs_getcwd(cwd, ARRAY_SIZE(cwd)) && Bstrcmp(cwd, "/") != 0)
-#endif
-        addsearchpath(cwd);
 
     if (CommandPaths)
     {
@@ -286,38 +318,6 @@ void G_ExtInit(void)
             Xfree(CommandPaths->str);
             Xfree(CommandPaths);
             CommandPaths = s;
-        }
-    }
-
-#if defined(_WIN32) && !defined(EDUKE32_STANDALONE)
-    if (buildvfs_exists("user_profiles_enabled"))
-#else
-    if (g_useCwd == 0 && !buildvfs_exists("user_profiles_disabled"))
-#endif
-    {
-        char *homedir;
-        int32_t asperr;
-
-        if ((homedir = Bgethomedir()))
-        {
-            Bsnprintf(cwd, ARRAY_SIZE(cwd), "%s/"
-#if defined(_WIN32)
-                      APPNAME
-#elif defined(GEKKO)
-                      "apps/" APPBASENAME
-#else
-                      ".config/" APPBASENAME
-#endif
-                      ,homedir);
-            asperr = addsearchpath(cwd);
-            if (asperr == -2)
-            {
-                if (buildvfs_mkdir(cwd,S_IRWXU) == 0) asperr = addsearchpath(cwd);
-                else asperr = -1;
-            }
-            if (asperr == 0)
-                buildvfs_chdir(cwd);
-            Xfree(homedir);
         }
     }
 
@@ -597,11 +597,21 @@ void G_AddSearchPaths(void)
 #if defined __linux__ || defined EDUKE32_BSD
     char buf[BMAX_PATH];
     char *homepath = Bgethomedir();
+    const char *xdg_docs_path = getenv("XDG_DOCUMENTS_DIR");
+    const char *xdg_config_path = getenv("XDG_CONFIG_HOME");
 
+    // Steam
     Bsnprintf(buf, sizeof(buf), "%s/.steam/steam", homepath);
     Duke_AddSteamPaths(buf);
 
     Bsnprintf(buf, sizeof(buf), "%s/.steam/steam/steamapps/libraryfolders.vdf", homepath);
+    Paths_ParseSteamLibraryVDF(buf, Duke_AddSteamPaths);
+
+    // Steam Flatpak
+    Bsnprintf(buf, sizeof(buf), "%s/.var/app/com.valvesoftware.Steam/.steam/steam", homepath);
+    Duke_AddSteamPaths(buf);
+
+    Bsnprintf(buf, sizeof(buf), "%s/.var/app/com.valvesoftware.Steam/.steam/steam/steamapps/libraryfolders.vdf", homepath);
     Paths_ParseSteamLibraryVDF(buf, Duke_AddSteamPaths);
 
     // Duke Nukem 3D: Atomic Edition - GOG.com
@@ -614,12 +624,27 @@ void G_AddSearchPaths(void)
     Fury_Add_GOG_Linux(buf);
     Paths_ParseXDGDesktopFilesFromGOG(homepath, "ION_Fury", Fury_Add_GOG_Linux);
 
+    if (xdg_config_path) {
+        Bsnprintf(buf, sizeof(buf), "%s/" APPBASENAME, xdg_config_path);
+        addsearchpath(buf);
+    }
+
+    if (xdg_docs_path) {
+        Bsnprintf(buf, sizeof(buf), "%s/" APPNAME, xdg_docs_path);
+        addsearchpath(buf);
+    }
+    else {
+        Bsnprintf(buf, sizeof(buf), "%s/Documents/" APPNAME, homepath);
+        addsearchpath(buf);
+    }
+
     Xfree(homepath);
 
     addsearchpath("/usr/share/games/jfduke3d");
     addsearchpath("/usr/local/share/games/jfduke3d");
-    addsearchpath("/usr/share/games/eduke32");
-    addsearchpath("/usr/local/share/games/eduke32");
+    addsearchpath("/usr/share/games/" APPBASENAME);
+    addsearchpath("/usr/local/share/games/" APPBASENAME);
+    addsearchpath("/app/extensions/extra");
 #elif defined EDUKE32_OSX
     char buf[BMAX_PATH];
     int32_t i;
@@ -658,7 +683,7 @@ void G_AddSearchPaths(void)
     {
         Bsnprintf(buf, sizeof(buf), "%s/JFDuke3D", support[i]);
         addsearchpath(buf);
-        Bsnprintf(buf, sizeof(buf), "%s/EDuke32", support[i]);
+        Bsnprintf(buf, sizeof(buf), "%s/" APPNAME, support[i]);
         addsearchpath(buf);
     }
 

@@ -1041,8 +1041,8 @@ ActorTestSpawn(SPRITEp sp)
             case ZILLA_RUN_R0: c = "zilla"; break;
             default: c = "?"; break;
             }
-            buildprintf("WARNING: skill-masked %s at %d,%d,%d not being killed because it "
-                        "activates something\n", c, TrackerCast(sp->x), TrackerCast(sp->y), TrackerCast(sp->z));
+            LOG_F(WARNING, "skill-masked %s at %d,%d,%d not being killed because it activates something",
+                           c, TrackerCast(sp->x), TrackerCast(sp->y), TrackerCast(sp->z));
             return TRUE;
         }
 
@@ -1746,7 +1746,7 @@ SpriteSetupPost(void)
             if (ds->picnum == ST1)
                 continue;
 
-            if (TEST(ds->cstat, CSTAT_SPRITE_ALIGNMENT_WALL|CSTAT_SPRITE_ALIGNMENT_FLOOR))
+            if (TEST(ds->cstat, CSTAT_SPRITE_ALIGNMENT_MASK))
                 continue;
 
             if (User[i])
@@ -1812,8 +1812,8 @@ SpriteSetup(void)
         }
 
         // CSTAT_SPIN is insupported - get rid of it
-        if (TEST(sp->cstat, CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_SLAB)
-            RESET(sp->cstat, CSTAT_SPRITE_ALIGNMENT_SLAB);
+        if (TEST(sp->cstat, CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_SLOPE)
+            RESET(sp->cstat, CSTAT_SPRITE_ALIGNMENT_SLOPE);
 
         // if BLOCK is set set BLOCK_HITSCAN
         // Hope this doesn't screw up anything
@@ -7716,4 +7716,3 @@ saveable_module saveable_sprite =
     saveable_sprite_data,
     SIZ(saveable_sprite_data)
 };
-

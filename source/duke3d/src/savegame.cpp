@@ -135,6 +135,7 @@ void G_ResetInterpolations(void)
 savebrief_t g_lastautosave, g_lastusersave, g_freshload;
 int32_t g_lastAutoSaveArbitraryID = -1;
 bool g_saveRequested;
+bool g_skipReturnToCenter;
 savebrief_t * g_quickload;
 
 menusave_t * g_menusaves;
@@ -404,6 +405,48 @@ static int different_user_map;
 
 #include "sjson.h"
 
+static void sv_update_app_title(int mapidx)
+{
+    if (mapidx >= 0) // if a valid map is active
+        G_UpdateAppTitle(Menu_HaveUserMap() ? boardfilename : g_mapInfo[mapidx].name);
+    else
+        G_UpdateAppTitle();
+}
+
+static void sv_update_filename(char * filename, const int mapidx, const int maxpath)
+{
+    if (boardfilename[0])
+        Bstrncpyz(filename, boardfilename, maxpath);
+    else if (g_mapInfo[mapidx].filename)
+        Bstrncpyz(filename, g_mapInfo[mapidx].filename, maxpath);
+    else
+        filename[0] = '\0';
+}
+
+static void sv_viewscreen_cleanup()
+{
+    for (int vscrIndex = 0; vscrIndex < MAX_ACTIVE_VIEWSCREENS; vscrIndex++)
+    {
+        if (g_activeVscrTile[vscrIndex] >= 0)
+            walock[g_activeVscrTile[vscrIndex]] = CACHE1D_UNLOCKED;
+        g_activeVscrSprite[vscrIndex] = -1;
+        g_activeVscrTile[vscrIndex] = -1;
+    }
+
+    int spriteNum = headspritestat[STAT_STANDABLE];
+    while (spriteNum >= 0)
+    {
+        switch (tileGetMapping(sprite[spriteNum].picnum)) {
+            case VIEWSCREEN__:
+            case VIEWSCREEN2__:
+                T1(spriteNum) = 0;
+                T2(spriteNum) = -1;
+            break;
+        }
+        spriteNum = nextspritestat[spriteNum];
+    }
+}
+
 // XXX: keyboard input 'blocked' after load fail? (at least ESC?)
 int32_t G_LoadPlayer(savebrief_t & sv)
 {
@@ -485,7 +528,7 @@ int32_t G_LoadPlayer(savebrief_t & sv)
         ud.returnvar[0] = level;
         volume = VM_OnEventWithReturn(EVENT_VALIDATESTART, g_player[myconnectindex].ps->i, myconnectindex, volume);
         level = ud.returnvar[0];
-
+        int const mapidx = volume*MAXLEVELS + level;
 
         {
             // CODEDUP from non-isExt branch, with simplifying assumptions
@@ -504,27 +547,19 @@ int32_t G_LoadPlayer(savebrief_t & sv)
             ud.m_player_skill = skill;
 
             boardfilename[0] = '\0';
-
-            int const mapIdx = volume*MAXLEVELS + level;
-
-            if (boardfilename[0])
-                Bstrcpy(currentboardfilename, boardfilename);
-            else if (g_mapInfo[mapIdx].filename)
-                Bstrcpy(currentboardfilename, g_mapInfo[mapIdx].filename);
-
+            sv_update_filename(currentboardfilename, mapidx, BMAX_PATH);
 
             if (currentboardfilename[0])
             {
                 usermaphack_t* mhkInfo = NULL;
                 if (sv_loadBoardMD4(currentboardfilename) == 0)
-                    mhkInfo = (usermaphack_t *)bsearch(&g_loadedMapHack, usermaphacks, num_usermaphacks,
-                                 sizeof(usermaphack_t), compare_usermaphacks);
+                    mhkInfo = find_usermaphack();
 
                 sv_loadMapart(mhkInfo, currentboardfilename);
                 sv_loadMhk(mhkInfo, currentboardfilename);
             }
 
-            currentboardfilename[0] = '\0';
+            Bmemcpy(currentboardfilename, boardfilename, BMAX_PATH);
 
             // G_NewGame_EnterLevel();
         }
@@ -636,20 +671,13 @@ int32_t G_LoadPlayer(savebrief_t & sv)
 
         sjson_destroy_context(ctx);
 
-        for (int vscrIndex = 0; vscrIndex < MAX_ACTIVE_VIEWSCREENS; vscrIndex++)
-        {
-            g_activeVscrSprite[vscrIndex] = -1;
-            g_activeVscrTile[vscrIndex] = -1;
-        }
-
         if (G_EnterLevel(MODE_GAME|MODE_EOL))
             G_BackToMenu();
 
-
+        sv_viewscreen_cleanup();
         // postloadplayer(1);
-
         // sv_postudload();
-
+        sv_update_app_title(mapidx);
         VM_OnEvent(EVENT_LOADGAME, g_player[screenpeek].ps->i, screenpeek);
 
         return 0;
@@ -703,37 +731,26 @@ int32_t G_LoadPlayer(savebrief_t & sv)
     ud.m_volume_number = h.volnum;
     ud.m_level_number = h.levnum;
     ud.m_player_skill = h.skill;
+    int const mapidx = h.volnum*MAXLEVELS + h.levnum;
 
     EDUKE32_STATIC_ASSERT(sizeof(h.boardfn) < sizeof(boardfilename));
     different_user_map = Bstrncmp(boardfilename, h.boardfn, sizeof(h.boardfn));
     // NOTE: size arg is (unconventionally) that of the source, it being smaller.
     Bstrncpyz(boardfilename, h.boardfn, sizeof(h.boardfn) /*!*/);
-
-    int const mapIdx = h.volnum*MAXLEVELS + h.levnum;
-
-    if (boardfilename[0])
-        Bstrcpy(currentboardfilename, boardfilename);
-    else if (g_mapInfo[mapIdx].filename)
-        Bstrcpy(currentboardfilename, g_mapInfo[mapIdx].filename);
+    sv_update_filename(currentboardfilename, mapidx, BMAX_PATH);
+    DLOG_F(INFO, "Loading savegame with map filename \"%s\"", h.boardfn);
 
     if (currentboardfilename[0])
     {
         usermaphack_t* mhkInfo = NULL;
         if (sv_loadBoardMD4(currentboardfilename) == 0)
-            mhkInfo = (usermaphack_t *)bsearch(&g_loadedMapHack, usermaphacks, num_usermaphacks,
-                                 sizeof(usermaphack_t), compare_usermaphacks);
+            mhkInfo = find_usermaphack();
 
         sv_loadMapart(mhkInfo, currentboardfilename);
         sv_loadMhk(mhkInfo, currentboardfilename);
     }
 
     Bmemcpy(currentboardfilename, boardfilename, BMAX_PATH);
-
-    for (int vscrIndex = 0; vscrIndex < MAX_ACTIVE_VIEWSCREENS; vscrIndex++)
-    {
-        g_activeVscrSprite[vscrIndex] = -1;
-        g_activeVscrTile[vscrIndex] = -1;
-    }
 
     if (status == 2)
         G_NewGame_EnterLevel();
@@ -746,6 +763,8 @@ int32_t G_LoadPlayer(savebrief_t & sv)
     }
 
     sv_postudload();  // ud.m_XXX = ud.XXX
+    sv_viewscreen_cleanup();
+    sv_update_app_title(mapidx);
     VM_OnEvent(EVENT_LOADGAME, g_player[screenpeek].ps->i, screenpeek, -1, h.userbytever);
     kclose(fil);
 
@@ -1236,7 +1255,7 @@ static void cmpspecdata(const dataspec_t *spec, uint8_t **dumpvar, uint8_t **dif
 {
     uint8_t * dump   = *dumpvar;
     uint8_t * diff   = *diffvar;
-    int       nbytes = (getnumvar(spec) + 7) >> 3;
+    int       nbytes = bitmap_size(getnumvar(spec));
     int const slen   = Bstrlen((const char *)spec->ptr);
 
     Bmemcpy(diff, spec->ptr, slen);
@@ -1292,7 +1311,7 @@ static int32_t applydiff(const dataspec_t *spec, uint8_t **dumpvar, uint8_t **di
 {
     uint8_t * dump   = *dumpvar;
     uint8_t * diff   = *diffvar;
-    int const nbytes = (getnumvar(spec)+7)>>3;
+    int const nbytes = bitmap_size(getnumvar(spec));
     int const slen   = Bstrlen((const char *)spec->ptr);
 
     if (Bmemcmp(diff, spec->ptr, slen))  // check STRING magic (sync check)
@@ -1310,7 +1329,7 @@ static int32_t applydiff(const dataspec_t *spec, uint8_t **dumpvar, uint8_t **di
         if (cnt < 0) return 1;
 
         eltnum++;
-        if (((*diffvar+slen)[eltnum>>3] & pow2char[eltnum&7]) == 0)
+        if (!bitmap_test(*diffvar+slen, eltnum))
         {
             dump += spec->size * cnt;
             continue;
@@ -1426,7 +1445,7 @@ static void sv_preprojectileload();
 static void sv_postprojectileload();
 
 static projectile_t *savegame_projectiledata;
-static uint8_t       savegame_projectiles[(MAXTILES + 7) >> 3];
+static uint8_t       savegame_projectiles[bitmap_size(MAXTILES)];
 static int32_t       savegame_projectilecnt = 0;
 
 static int32_t savegame_labelcnt;
@@ -1542,7 +1561,7 @@ static const dataspec_t svgm_script[] =
     { DS_NOCHK|DS_LOADFN, (void *) &sv_prelabelload, 0, 1 },
     { DS_NOCHK|DS_DYNAMIC|DS_CNT(savegame_labelcnt), &savegame_labels, 1<<6, (intptr_t)&savegame_labelcnt },
     { DS_SAVEFN, (void *) &sv_preprojectilesave, 0, 1 },
-    { 0, savegame_projectiles, sizeof(uint8_t), (MAXTILES + 7) >> 3 },
+    { 0, savegame_projectiles, sizeof(uint8_t), bitmap_size(MAXTILES) },
     { DS_LOADFN, (void *) &sv_preprojectileload, 0, 1 },
     { DS_DYNAMIC|DS_CNT(savegame_projectilecnt), &savegame_projectiledata, sizeof(projectile_t), (intptr_t)&savegame_projectilecnt },
     { DS_SAVEFN, (void *) &sv_postprojectilesave, 0, 1 },
@@ -1570,7 +1589,7 @@ static const dataspec_t svgm_anmisc[] =
     { 0, &g_spriteDeleteQueuePos, sizeof(g_spriteDeleteQueuePos), 1 },
     { DS_NOCHK, &g_deleteQueueSize, sizeof(g_deleteQueueSize), 1 },
     { DS_CNT(g_deleteQueueSize), &SpriteDeletionQueue[0], sizeof(int16_t), (intptr_t)&g_deleteQueueSize },
-    { 0, &show2dsector[0], sizeof(uint8_t), (MAXSECTORS+7)>>3 },
+    { 0, &show2dsector[0], sizeof(uint8_t), bitmap_size(MAXSECTORS) },
     { DS_NOCHK, &g_cloudCnt, sizeof(g_cloudCnt), 1 },
     { 0, &g_cloudSect[0], sizeof(g_cloudSect), 1 },
     { 0, &g_cloudX, sizeof(g_cloudX), 1 },
@@ -1651,7 +1670,7 @@ static void sv_makevarspec()
 
         if (aGameArrays[i].flags & GAMEARRAY_BITMAP)
         {
-            svgm_vars[vcnt].size = (aGameArrays[i].size + 7) >> 3;
+            svgm_vars[vcnt].size = bitmap_size(aGameArrays[i].size);
             svgm_vars[vcnt].cnt  = 1;  // assumed constant throughout demo, i.e. no RESIZEARRAY
         }
         else
@@ -1733,6 +1752,7 @@ int32_t sv_saveandmakesnapshot(buildvfs_FILE fil, char const *name, int8_t spot,
     h.health     = sprite[g_player[myconnectindex].ps->i].extra;
 
     Bstrncpyz(h.boardfn, currentboardfilename, sizeof(h.boardfn));
+    DLOG_F(INFO, "Creating a savegame with map filename \"%s\"", h.boardfn);
 
     if (spot >= 0)
     {
@@ -1749,7 +1769,7 @@ int32_t sv_saveandmakesnapshot(buildvfs_FILE fil, char const *name, int8_t spot,
 
         const time_t t = time(NULL);
         struct tm *  st;
-        
+
         if (t>=0 && (st = localtime(&t)))
             Bsnprintf(h.savename, sizeof(h.savename), "Demo %04d%02d%02d %s",
                       st->tm_year+1900, st->tm_mon+1, st->tm_mday, s_buildRev);
@@ -2229,7 +2249,7 @@ static void sv_preprojectileload()
 
     for (int i = 0; i < MAXTILES; i++)
     {
-        if (savegame_projectiles[i>>3] & pow2char[i&7])
+        if (bitmap_test(savegame_projectiles, i))
             savegame_projectilecnt++;
     }
 
@@ -2241,7 +2261,7 @@ static void sv_postprojectileload()
 {
     for (int i = 0, cnt = 0; i < MAXTILES; i++)
     {
-        if (savegame_projectiles[i>>3] & pow2char[i&7])
+        if (bitmap_test(savegame_projectiles, i))
         {
             C_AllocProjectile(i);
             Bmemcpy(g_tile[i].proj, &savegame_projectiledata[cnt++], sizeof(projectile_t));
@@ -2521,7 +2541,9 @@ static void postloadplayer(int32_t savegamep)
     //7
     for (i=0; i<MAXPLAYERS; i++)
     {
-        if (g_player[i].ps->gravity == 0 && g_player[i].ps->floorzoffset == 0)
+        // This ensures compatibility with some older savegames where these values didn't exist.
+        if ((g_player[i].ps->gravity == 0 && g_player[i].ps->floorzoffset == 0)
+            || (g_player[i].ps->floorzrebound == 0 && g_player[i].ps->floorzcutoff == 0))
             P_ResetOffsets(g_player[i].ps);
 
         g_player[i].playerquitflag = 1;

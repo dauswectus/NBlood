@@ -147,7 +147,7 @@ typedef struct
 EDUKE32_STATIC_ASSERT(sizeof(actor_t) == 96);
 
 #ifdef POLYMER
-typedef struct  
+typedef struct
 {
     _prlight *lightptr;              // 4b/8b  aligned on 96 bytes
     vec3_t lightoffset;
@@ -404,18 +404,19 @@ extern int32_t      g_noEnemies;
 extern int32_t      otherp;
 extern int32_t      ticrandomseed;
 extern projectile_t SpriteProjectile[MAXSPRITES];
-extern uint8_t      g_radiusDmgStatnums[(MAXSTATUS+7)>>3];
+extern uint8_t      g_radiusDmgStatnums[bitmap_size(MAXSTATUS)];
 
 int dukeValidateSectorEffectorPlaysSound(int);
 int dukeValidateSectorPlaysSound(int);
 
+#ifdef YAX_ENABLE
 int  A_CheckNoSE7Water(uspriteptr_t pSprite, int sectNum, int sectLotag, int32_t *pOther);
+#endif
 int  A_CheckSwitchTile(int spriteNum);
 int A_IncurDamage(int spriteNum);
 void A_AddToDeleteQueue(int spriteNum);
 void A_DeleteSprite(int spriteNum);
 void A_DoGuts(int spriteNum, int tileNum, int spawnCnt);
-void A_DoGutsDir(int spriteNum, int tileNum, int spawnCnt);
 int A_GetClipdist(int spriteNum);
 void A_MoveCyclers(void);
 void A_MoveDummyPlayers(void);

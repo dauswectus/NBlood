@@ -83,12 +83,12 @@ int32_t S_SoundStartup(void)
     initdata = (void *) win_gethwnd(); // used for DirectSound
 #endif
 
-    initprintf("Initializing sound... ");
+    LOG_F(INFO, "Initializing sound...");
 
     status = FX_Init(NumVoices, NumChannels, MixRate, initdata);
     if (status != FX_Ok)
     {
-        initprintf("Sound startup error: %s\n", FX_ErrorString(status));
+        LOG_F(ERROR, "Sound startup error: %s", FX_ErrorString(status));
         return -2;
     }
 
@@ -118,7 +118,7 @@ void S_SoundShutdown(void)
 
     int status = FX_Shutdown();
     if (status != FX_Ok)
-        initprintf("Sound shutdown error: %s\n", FX_ErrorString(status));
+        LOG_F(ERROR, "Sound shutdown error: %s", FX_ErrorString(status));
 }
 
 int32_t S_LoadSound(uint32_t num)
@@ -172,7 +172,7 @@ int32_t S_DefineSound(int sndidx, const char * filename, const char * definednam
         Xfree(snd.definedname);
     }
     if (duplicate)
-        initprintf("warning: duplicate sound #%d, overwriting\n", sndidx);
+        LOG_F(WARNING, "duplicate sound #%d, overwriting", sndidx);
 
     if (!duplicate)
     {
@@ -463,6 +463,8 @@ void S_Update(void)
         for (k=0; k<g_sounds[j].num; k++)
         {
             i = g_sounds[j].SoundOwner[k].ow;
+            if (((unsigned) i) >= MAXSPRITES) // globalsound
+                continue;
 
             sx = sprite[i].x;
             sy = sprite[i].y;
@@ -471,7 +473,7 @@ void S_Update(void)
             sndang = 2048 + ca - getangle(cx-sx,cy-sy);
             sndang &= 2047;
             sndist = FindDistance3D((cx-sx),(cy-sy),(cz-sz));
-            if (i >= 0 && (g_sounds[j].m & SF_GLOBAL) == 0 && PN(i) == MUSICANDSFX && SLT(i) < 999 && (sector[SECT(i)].lotag&0xff) < 9)
+            if ((g_sounds[j].m & SF_GLOBAL) == 0 && PN(i) == MUSICANDSFX && SLT(i) < 999 && (sector[SECT(i)].lotag&0xff) < 9)
                 sndist = divscale14(sndist,(SHT(i)+1));
 
             sndist += g_sounds[j].vo;
@@ -482,22 +484,12 @@ void S_Update(void)
 
             if (PN(i) == MUSICANDSFX && SLT(i) < 999)
                 g_numEnvSoundsPlaying++;
-            /*
-                        switch (j)
-                        {
-                        case PIPEBOMB_EXPLODE:
-                        case LASERTRIP_EXPLODE:
-                        case RPG_EXPLODE:
-                            if (sndist > (6144)) sndist = (6144);
-                            break;
-                        default:
-            */
+
             if (sndist > 31444 && PN(i) != MUSICANDSFX)
             {
                 S_StopSound(j);
                 continue;
             }
-//            }
 
             if (g_sounds[j].ptr == 0 && S_LoadSound(j) == 0) continue;
             if (g_sounds[j].m & SF_GLOBAL) sndist = 0;
@@ -526,9 +518,9 @@ void S_Callback(intptr_t num)
 
                 if (sprite[i].picnum == MUSICANDSFX && sector[sprite[i].sectnum].lotag < 3 && sprite[i].lotag < 999)
                 {
-                    extern uint8_t g_ambiencePlaying[(MAXSPRITES+7)>>3];
+                    extern uint8_t g_ambiencePlaying[bitmap_size(MAXSPRITES)];
 
-                    g_ambiencePlaying[i>>3] &= ~pow2char[i&7];
+                    bitmap_clear(g_ambiencePlaying, i);
 
                     if (j < k-1)
                     {

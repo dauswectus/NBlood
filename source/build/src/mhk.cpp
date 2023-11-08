@@ -13,6 +13,16 @@ int compare_usermaphacks(const void *a, const void *b)
 usermaphack_t *usermaphacks;
 int32_t num_usermaphacks;
 
+usermaphack_t *find_usermaphack()
+{
+    if (!usermaphacks)
+        return nullptr;
+
+    auto *res = bsearch(&g_loadedMapHack, usermaphacks, num_usermaphacks, sizeof(usermaphack_t), compare_usermaphacks);
+
+    return (usermaphack_t *)res;
+}
+
 #ifdef POLYMER
 static int16_t maphacklightcnt=0;
 static int16_t maphacklight[PR_MAXLIGHTS];
@@ -158,7 +168,7 @@ int32_t engineLoadMHK(const char *filename)
             break;
 
         // angoff <xx>
-        case T_ANGOFF:     
+        case T_ANGOFF:
             if (scriptfile_getnumber(script, &read)) break;
             if (whichsprite < 0) { ignoreThisShit(); break; }
             spriteext[whichsprite].mdangoff = (int16_t) read;
@@ -305,8 +315,8 @@ int32_t engineLoadMHK(const char *filename)
             {
                 if (maphacklightcnt == PR_MAXLIGHTS)
                 {
-                    initprintf("warning: max light count %d exceeded, "
-                        "ignoring further light defs\n", PR_MAXLIGHTS);
+                    LOG_F(WARNING, "%s:%d: warning: max light count %d exceeded, ignoring further light defs",
+                                   script->filename, scriptfile_getlinum(script, cmdtokptr), PR_MAXLIGHTS);
                     toomanylights = 1;
                     break;
                 }

@@ -240,7 +240,7 @@ void paletteLoadFromDisk(void)
 
         if (numshades <= 1)
         {
-            initprintf("Warning: Invalid number of shades in \"palette.dat\"!\n");
+            LOG_F(WARNING, "invalid number of shades in \"palette.dat\"!");
             numshades = 0;
             return kclose(fil);
         }
@@ -294,7 +294,7 @@ void paletteLoadFromDisk(void)
         uint8_t addblendtabs;
         if (kread_and_test(fil, &addblendtabs, 1))
         {
-            initprintf("Warning: failed reading additional blending table count\n");
+            LOG_F(WARNING, "failed reading additional blending table count");
             return kclose(fil);
         }
 
@@ -304,17 +304,17 @@ void paletteLoadFromDisk(void)
         {
             if (kread_and_test(fil, &blendnum, 1))
             {
-                initprintf("Warning: failed reading additional blending table index\n");
+                LOG_F(WARNING, "failed reading additional blending table index");
                 Xfree(tab);
                 return kclose(fil);
             }
 
             if (paletteGetBlendTable(blendnum) != NULL)
-                initprintf("Warning: duplicate blending table index %3d encountered\n", blendnum);
+                LOG_F(WARNING, "duplicate blending table index %3d encountered", blendnum);
 
             if (kread_and_test(fil, tab, 256*256))
             {
-                initprintf("Warning: failed reading additional blending table\n");
+                LOG_F(WARNING, "failed reading additional blending table");
                 Xfree(tab);
                 return kclose(fil);
             }
@@ -328,7 +328,7 @@ void paletteLoadFromDisk(void)
         if (!kread_and_test(fil, &lognumalphatabs, 1))
         {
             if (!(lognumalphatabs >= 1 && lognumalphatabs <= 7))
-                initprintf("invalid lognumalphatabs value, must be in [1 .. 7]\n");
+                LOG_F(ERROR, "invalid lognumalphatabs value, must be in [1 .. 7]");
             else
                 numalphatabs = 1<<lognumalphatabs;
         }
@@ -342,7 +342,7 @@ void paletteLoadFromDisk(void)
 #endif
 }
 
-uint8_t PaletteIndexFullbrights[32];
+uint8_t PaletteIndexFullbright[bitmap_size(256)];
 
 void palettePostLoadTables(void)
 {
@@ -365,7 +365,7 @@ void palettePostLoadTables(void)
     whitecol = paletteGetClosestColor(255, 255, 255);
     redcol = paletteGetClosestColor(255, 0, 0);
 
-    // Bmemset(PaletteIndexFullbrights, 0, sizeof(PaletteIndexFullbrights));
+    // Bmemset(PaletteIndexFullbright, 0, sizeof(PaletteIndexFullbright));
     if (!duke64)
     for (bssize_t c = 0; c < 255; ++c) // skipping transparent color
     {
@@ -380,7 +380,7 @@ void palettePostLoadTables(void)
             if (EDUKE32_PREDICT_FALSE(palookup0[s] != index))
                 goto PostLoad_NotFullbright;
 
-        SetPaletteIndexFullbright(c);
+        bitmap_set(PaletteIndexFullbright, c);
 
         PostLoad_NotFullbright: ;
     }
@@ -395,7 +395,7 @@ void palettePostLoadTables(void)
             {
                 uint8_t const index = palookup0[c];
                 uint8_t const * const color = &palette[index*3];
-                if (!IsPaletteIndexFullbright(index) && memcmp(blackcolor, color, sizeof(rgb24_t)))
+                if (!bitmap_test(PaletteIndexFullbright, index) && memcmp(blackcolor, color, sizeof(rgb24_t)))
                     goto PostLoad_FoundShade;
             }
         }
@@ -409,7 +409,7 @@ void palettePostLoadTables(void)
             continue;
 
         palette_t *edcol = (palette_t *) &vgapal16[4*i];
-        editorcolors[i] = paletteGetClosestColorWithBlacklist(edcol->b, edcol->g, edcol->r, 254, PaletteIndexFullbrights);
+        editorcolors[i] = paletteGetClosestColorWithBlacklist(edcol->b, edcol->g, edcol->r, 254, PaletteIndexFullbright);
     }
 }
 
@@ -465,7 +465,7 @@ int32_t paletteLoadLookupTable(buildvfs_kfd fp)
 
         if (palnum >= 256-RESERVEDPALS)
         {
-            initprintf("ERROR: attempt to load lookup at reserved pal %d\n", palnum);
+            LOG_F(ERROR, "attempt to load lookup for reserved pal %d", palnum);
             return -2;
         }
 

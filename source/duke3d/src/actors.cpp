@@ -38,7 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 # define ACTOR_STATIC static
 #endif
 
-uint8_t g_radiusDmgStatnums[(MAXSTATUS+7)>>3];
+uint8_t g_radiusDmgStatnums[bitmap_size(MAXSTATUS)];
 
 #define DELETE_SPRITE_AND_CONTINUE(KX) do { A_DeleteSprite(KX); goto next_sprite; } while (0)
 
@@ -95,10 +95,10 @@ void G_DoConveyorInterp(int smoothratio)
     {
         auto s = &sprite[i];
         auto a = &actor[i];
-        
+
         if (s->picnum != SECTOREFFECTOR || a->t_data[4])
             continue;
-        
+
         auto sect = &sector[s->sectnum];
 
         if ((int)(s->lotag == SE_24_CONVEYOR) | (int)(s->lotag == SE_34_CONVEYOR2))
@@ -112,10 +112,10 @@ void G_ResetConveyorInterp(void)
     {
         auto s = &sprite[i];
         auto a = &actor[i];
-        
+
         if (s->picnum != SECTOREFFECTOR || a->t_data[4])
             continue;
-        
+
         auto sect = &sector[s->sectnum];
 
         if ((int)(s->lotag == SE_24_CONVEYOR) | (int)(s->lotag == SE_34_CONVEYOR2))
@@ -296,7 +296,7 @@ void A_RadiusDamageObject_Internal(int const spriteNum, int const otherSprite, i
     }
 }
 
-#define MAXDAMAGESECTORS 128
+#define MAXDAMAGESECTORS 512
 
 void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, int const dmg2, int const dmg3, int const dmg4)
 {
@@ -306,9 +306,9 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
 
     auto const pSprite = (uspriteptr_t)&sprite[spriteNum];
 
-    int16_t numSectors, sectorList[MAXDAMAGESECTORS];
-    uint8_t * const sectorMap = (uint8_t *)Balloca((numsectors+7)>>3);
-    bfirst_search_init(sectorList, sectorMap, &numSectors, numsectors, pSprite->sectnum);
+    int16_t sectorListTotal, sectorList[MAXDAMAGESECTORS];
+    uint8_t * const sectorMap = (uint8_t *)Balloca(bitmap_size(numsectors));
+    bfirst_search_init(sectorList, sectorMap, &sectorListTotal, numsectors, pSprite->sectnum);
 
 #ifndef EDUKE32_STANDALONE
     int wallDamage = true;
@@ -321,16 +321,17 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
     int const forceFromRadiusDamage = max<int>((blastRadius * dmg4) - min<int>(UINT16_MAX, dist(pSprite, &g_player[myconnectindex].ps->pos) << 3), 0);
     I_AddForceFeedback(forceFromRadiusDamage, forceFromRadiusDamage, dmg3);
 
-    auto wallTouched = (uint8_t *)Balloca((numwalls+7)>>3);
-    Bmemset(wallTouched, 0, (numwalls+7)>>3);
+    auto wallTouched = (uint8_t *)Balloca(bitmap_size(numwalls));
+    Bmemset(wallTouched, 0, bitmap_size(numwalls));
 
-    auto wallCanSee = (uint8_t *)Balloca((numwalls+7)>>3);
-    Bmemset(wallCanSee, 0, (numwalls+7)>>3);
+    auto wallCanSee = (uint8_t *)Balloca(bitmap_size(numwalls));
+    Bmemset(wallCanSee, 0, bitmap_size(numwalls));
 
-    for (int sectorCount=0; sectorCount < numSectors; ++sectorCount)
+    for (int sectorCount=0; sectorCount < sectorListTotal; ++sectorCount)
     {
-        int const   sectorNum  = sectorList[sectorCount];
-        auto const &listSector = sector[sectorNum];
+        int const origSector  = sectorList[sectorCount];
+        Bassert((unsigned)origSector < (unsigned)numsectors);
+        auto const &listSector = sector[origSector];
 
         vec2_t  closest  = {};
         int32_t distance = INT32_MAX;
@@ -339,13 +340,13 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
         int const endWall   = listSector.wallnum + startWall;
 
         int w = startWall;
-        
+
         for (auto pWall = (uwallptr_t)&wall[startWall]; w < endWall; ++w, ++pWall)
         {
             vec2_t  p        = pSprite->xy;
             int32_t walldist = blastRadius - 1;
 
-            if (bitmap_test(wallTouched, w) == 0)
+            if (!bitmap_test(wallTouched, w))
                 walldist = getwalldist(p, w, &p);
 
             if (walldist < blastRadius)
@@ -356,7 +357,7 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
                     closest  = p;
                 }
 
-                int16_t aSector = sectorNum;
+                int16_t aSector = origSector;
                 vec3_t  vect    = { (((pWall->x + wall[pWall->point2].x) >> 1) + pSprite->x) >> 1,
                                     (((pWall->y + wall[pWall->point2].y) >> 1) + pSprite->y) >> 1, pSprite->z };
 
@@ -365,7 +366,7 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
                 if (aSector == -1)
                 {
                     vect.xy = p;
-                    aSector   = sectorNum;
+                    aSector   = origSector;
                 }
 
                 bitmap_set(wallTouched, w);
@@ -373,7 +374,7 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
                 if (pWall->nextwall != -1)
                     bitmap_set(wallTouched, pWall->nextwall);
 
-                if (bitmap_test(wallCanSee, w) == 1 || cansee(vect.x, vect.y, vect.z, aSector, pSprite->x, pSprite->y, pSprite->z, pSprite->sectnum))
+                if (bitmap_test(wallCanSee, w) || cansee(vect.x, vect.y, vect.z, aSector, pSprite->x, pSprite->y, pSprite->z, pSprite->sectnum))
                 {
                     bitmap_set(wallCanSee, w);
 
@@ -386,15 +387,18 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
                         A_DamageWall_Internal(spriteNum, w, { p.x, p.y, pSprite->z }, pSprite->picnum);
                 }
 
-                int const nextSector = pWall->nextsector;
-
-                if (nextSector >= 0)
-                    bfirst_search_try(sectorList, sectorMap, &numSectors, nextSector);
-
-                if (numSectors == MAXDAMAGESECTORS)
+                if (sectorListTotal < MAXDAMAGESECTORS)
                 {
-                    LOG_F(WARNING, "Sprite %d tried to damage more than %d sectors!", spriteNum, MAXDAMAGESECTORS);
-                    goto wallsfinished;
+                    int const nextSector = pWall->nextsector;
+
+                    if (nextSector >= 0)
+                        bfirst_search_try(sectorList, sectorMap, &sectorListTotal, nextSector);
+
+#ifdef DEBUGGINGAIDS
+                    if (sectorListTotal >= MAXDAMAGESECTORS)
+                        DLOG_F(WARNING, "A_RadiusDamage: Sprite %d tried to damage more than %d sectors!", spriteNum, MAXDAMAGESECTORS);
+#endif
+                    Bassert(sectorListTotal <= MAXDAMAGESECTORS);
                 }
             }
         }
@@ -402,20 +406,56 @@ void A_RadiusDamage(int const spriteNum, int const blastRadius, int const dmg1, 
         if (distance >= blastRadius)
             continue;
 
+        // Intentionally does not use TROR-aware function, so that potentially solid TROR surfaces may be damaged.
         int32_t floorZ, ceilZ;
-        getzsofslope(sectorNum, closest.x, closest.y, &ceilZ, &floorZ);
+        getzsofslope(origSector, closest.x, closest.y, &ceilZ, &floorZ);
 
         if (((ceilZ - pSprite->z) >> 8) < blastRadius)
-            Sect_DamageCeiling_Internal(spriteNum, sectorNum);
+            Sect_DamageCeiling_Internal(spriteNum, origSector);
 
         if (((pSprite->z - floorZ) >> 8) < blastRadius)
-            Sect_DamageFloor_Internal(spriteNum, sectorNum);
+            Sect_DamageFloor_Internal(spriteNum, origSector);
+
+#ifdef YAX_ENABLE
+        // Note: Only add TROR sectors if not outside radius.
+        if (numyaxbunches > 0 && sectorListTotal < MAXDAMAGESECTORS)
+        {
+            int32_t yax_sect;
+            int16_t yax_bunchnum = yax_getbunch(origSector, YAX_CEILING);
+
+            if (yax_bunchnum >= 0)
+            for (SECTORS_OF_BUNCH(yax_bunchnum, YAX_FLOOR, yax_sect))
+            {
+                if ((unsigned)yax_sect >= (unsigned)numsectors)
+                    continue;
+
+                if (sectorListTotal < MAXDAMAGESECTORS)
+                    bfirst_search_try(sectorList, sectorMap, &sectorListTotal, yax_sect);
+            }
+
+            yax_bunchnum = yax_getbunch(origSector, YAX_FLOOR);
+
+            if (yax_bunchnum >= 0)
+            for (SECTORS_OF_BUNCH(yax_bunchnum, YAX_CEILING, yax_sect))
+            {
+                if ((unsigned)yax_sect >= (unsigned)numsectors)
+                    continue;
+
+                if (sectorListTotal < MAXDAMAGESECTORS)
+                    bfirst_search_try(sectorList, sectorMap, &sectorListTotal, yax_sect);
+            }
+
+            if (sectorListTotal == MAXDAMAGESECTORS) {
+                LOG_F(WARNING, "A_RadiusDamage (yax): Sprite %d tried to damage more than %d sectors!", spriteNum, MAXDAMAGESECTORS);
+            }
+            Bassert(sectorListTotal <= MAXDAMAGESECTORS);
+        }
+#endif
     }
 
-wallsfinished:
     int const randomZOffset = -ZOFFSET2 + (krand()&(ZOFFSET5-1));
 
-    for (int sectorCount=0; sectorCount < numSectors; ++sectorCount)
+    for (int sectorCount=0; sectorCount < sectorListTotal; ++sectorCount)
     {
         int damageSprite = headspritesect[sectorList[sectorCount]];
 
@@ -427,7 +467,7 @@ wallsfinished:
             if (pDamage != pSprite && bitmap_test(g_radiusDmgStatnums, pDamage->statnum))
             {
                 int spriteDist = dist(pSprite, pDamage);
-                
+
                 if (pDamage->picnum == APLAYER)
                 {
                     int const  playerNum = P_Get(damageSprite);
@@ -473,14 +513,14 @@ static int32_t Proj_MaybeDoTransport(int32_t spriteNum, uspriteptr_t const pSEff
     return 1;
 }
 
+#ifdef YAX_ENABLE
 // Check whether sprite <s> is on/in a non-SE7 water sector.
 // <othersectptr>: if not NULL, the sector on the other side.
 int A_CheckNoSE7Water(uspriteptr_t const pSprite, int sectNum, int sectLotag, int32_t *pOther)
 {
     if (sectLotag == ST_1_ABOVE_WATER || sectLotag == ST_2_UNDERWATER)
     {
-        int const otherSect =
-        yax_getneighborsect(pSprite->x, pSprite->y, sectNum, sectLotag == ST_1_ABOVE_WATER ? YAX_FLOOR : YAX_CEILING);
+        int const otherSect = yax_getneighborsect(pSprite->x, pSprite->y, sectNum, sectLotag == ST_1_ABOVE_WATER ? YAX_FLOOR : YAX_CEILING);
         int const otherLotag = (sectLotag == ST_1_ABOVE_WATER) ? ST_2_UNDERWATER : ST_1_ABOVE_WATER;
 
         // If submerging, the lower sector MUST have lotag 2.
@@ -497,6 +537,7 @@ int A_CheckNoSE7Water(uspriteptr_t const pSprite, int sectNum, int sectLotag, in
 
     return 0;
 }
+#endif
 
 // Check whether to do a z position update of sprite <spritenum>.
 // Returns:
@@ -561,7 +602,7 @@ int A_GetClipdist(int spriteNum)
             if ((SpriteProjectile[spriteNum].workslike & PROJECTILE_REALCLIPDIST) == 0)
                 clipDist = 16;
         }
-        else if ((pSprite->cstat & 48) == 16)
+        else if ((pSprite->cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_WALL)
             clipDist = 0;
         else if (A_CheckEnemySprite(pSprite))
         {
@@ -837,7 +878,11 @@ void A_DoGuts(int spriteNum, int tileNum, int spawnCnt)
         repeat.x = repeat.y = 8;
 
     int gutZ   = pSprite->z - ZOFFSET3;
+#ifdef YAX_ENABLE
+    int floorz = yax_getflorzofslope(pSprite->sectnum, pSprite->xy);
+#else
     int floorz = getflorzofslope(pSprite->sectnum, pSprite->x, pSprite->y);
+#endif
 
     if (gutZ > (floorz-ZOFFSET3))
         gutZ = floorz-ZOFFSET3;
@@ -858,31 +903,6 @@ void A_DoGuts(int spriteNum, int tileNum, int spawnCnt)
         }
 
         sprite[i].pal = pSprite->pal;
-    }
-}
-
-void A_DoGutsDir(int spriteNum, int tileNum, int spawnCnt)
-{
-    auto const s      = (uspriteptr_t)&sprite[spriteNum];
-    vec2_t     repeat = { 32, 32 };
-
-    if (A_CheckEnemySprite(s) && s->xrepeat < 16)
-        repeat.x = repeat.y = 8;
-
-    int gutZ = s->z-ZOFFSET3;
-    int floorZ = getflorzofslope(s->sectnum,s->x,s->y);
-
-    if (gutZ > (floorZ-ZOFFSET3))
-        gutZ = floorZ-ZOFFSET3;
-
-    if (s->picnum == COMMANDER)
-        gutZ -= (24<<8);
-
-    for (bssize_t j=spawnCnt; j>0; j--)
-    {
-        int const i = A_InsertSprite(s->sectnum, s->x, s->y, gutZ, tileNum, -32, repeat.x, repeat.y, krand() & 2047,
-                                     256 + (krand() & 127), -512 - (krand() & 2047), spriteNum, 5);
-        sprite[i].pal = s->pal;
     }
 }
 #endif
@@ -988,12 +1008,12 @@ void G_AddGameLight(int spriteNum, int sectNum, vec3_t const &offset, int lightR
 
         if (s->pal)
         {
-            int colidx = paletteGetClosestColorWithBlacklist(pr_light.color[0], pr_light.color[1], pr_light.color[2], 254, PaletteIndexFullbrights);
+            int colidx = paletteGetClosestColorWithBlacklist(pr_light.color[0], pr_light.color[1], pr_light.color[2], 254, PaletteIndexFullbright);
             colidx = palookup[s->pal][colidx];
             pr_actor->lightcolidx = colidx;
             pr_light.color[0] = curpalette[colidx].r;
             pr_light.color[1] = curpalette[colidx].g;
-            pr_light.color[2] = curpalette[colidx].b;            
+            pr_light.color[2] = curpalette[colidx].b;
         }
         else
             pr_actor->lightcolidx = 0;
@@ -1051,14 +1071,14 @@ void G_AddGameLight(int spriteNum, int sectNum, vec3_t const &offset, int lightR
         int colidx = pr_actor->lightcolidx;
         pr_light.color[0] = curpalette[colidx].r;
         pr_light.color[1] = curpalette[colidx].g;
-        pr_light.color[2] = curpalette[colidx].b;          
+        pr_light.color[2] = curpalette[colidx].b;
     }
 #else
     auto unusedParameterWarningsOnConstReferencesSuck = offset;
     UNREFERENCED_PARAMETER(unusedParameterWarningsOnConstReferencesSuck);
     UNREFERENCED_PARAMETER(lightRadius);
     UNREFERENCED_PARAMETER(spriteNum);
-    UNREFERENCED_PARAMETER(sectNum);    
+    UNREFERENCED_PARAMETER(sectNum);
     UNREFERENCED_PARAMETER(lightRange);
     UNREFERENCED_PARAMETER(lightHoriz);
     UNREFERENCED_PARAMETER(lightColor);
@@ -1089,7 +1109,7 @@ void G_InterpolateLights(int smoothratio)
         auto pActor = &actor[pr_light.owner];
         auto &pr_actor = practor[pr_light.owner];
 
-        pr_light.xyz = pSprite->xyz;        
+        pr_light.xyz = pSprite->xyz;
         pr_light.xyz -= pr_actor.lightoffset;
         pr_light.xyz -= { mulscale16(65536 - smoothratio, pSprite->x - pActor->bpos.x),
                          mulscale16(65536 - smoothratio, pSprite->y - pActor->bpos.y),
@@ -1797,7 +1817,7 @@ next_sprite:
 }
 
 ACTOR_STATIC void G_MoveFallers(void)
-{    
+{
     int spriteNum = headspritestat[STAT_FALLER];
 
     while (spriteNum >= 0)
@@ -1864,9 +1884,9 @@ ACTOR_STATIC void G_MoveFallers(void)
                     A_SetSprite(spriteNum,CLIPMASK0);
                 }
 
-                if (EDUKE32_PREDICT_FALSE(G_CheckForSpaceFloor(pSprite->sectnum)))
+                if (G_CheckForSpaceFloor(pSprite->sectnum))
                     spriteGravity = 0;
-                else if (EDUKE32_PREDICT_FALSE(G_CheckForSpaceCeiling(pSprite->sectnum)))
+                else if (G_CheckForSpaceCeiling(pSprite->sectnum))
                     spriteGravity = g_spriteGravity / 6;
 
                 if (pSprite->z < (sector[sectNum].floorz - AC_FZOFFSET(spriteNum)))
@@ -1894,7 +1914,7 @@ next_sprite:
 }
 
 ACTOR_STATIC void G_MoveStandables(void)
-{    
+{
     int spriteNum = headspritestat[STAT_STANDABLE], j, switchPic;
 
     while (spriteNum >= 0)
@@ -3703,7 +3723,7 @@ ACTOR_STATIC void G_MoveWeapons(void)
                                 sprite[newSprite].xrepeat = 6;
                                 sprite[newSprite].yrepeat = 6;
                             }
-                                
+
                             sprite[newSprite].xy -= Proj_GetOffset(newSprite);
 
                             if (pSprite->xrepeat >= 10 && (moveSprite & 49152) == 16384)
@@ -3974,6 +3994,8 @@ ACTOR_STATIC void G_MoveTransports(void)
                                 if (!pPlayer->jetpack_on || TEST_SYNC_KEY(thisPlayer.input.bits, SK_JUMP)
                                     || TEST_SYNC_KEY(thisPlayer.input.bits, SK_CROUCH))
                                 {
+                                    auto posdiff = pPlayer->opos - pPlayer->pos;
+
                                     pPlayer->pos.x += sprite[OW(spriteNum)].x - SX(spriteNum);
                                     pPlayer->pos.y += sprite[OW(spriteNum)].y - SY(spriteNum);
                                     pPlayer->pos.z = (pPlayer->jetpack_on && (TEST_SYNC_KEY(thisPlayer.input.bits, SK_JUMP)
@@ -3982,7 +4004,7 @@ ACTOR_STATIC void G_MoveTransports(void)
                                                      : sprite[OW(spriteNum)].z + 6144;
 
                                     actor[pPlayer->i].bpos = pPlayer->pos;
-                                    pPlayer->opos          = pPlayer->pos;
+                                    pPlayer->opos          = pPlayer->pos + posdiff;
                                     pPlayer->bobpos        = pPlayer->pos.xy;
 
                                     changespritesect(sectSprite, sprite[OW(spriteNum)].sectnum);
@@ -5642,7 +5664,11 @@ ACTOR_STATIC void G_MoveMisc(void)  // STATNUM 5
             switchPic--;
 
         if ((pSprite->picnum == MONEY+1) || (pSprite->picnum == MAIL+1) || (pSprite->picnum == PAPER+1))
-            actor[spriteNum].floorz = pSprite->z = getflorzofslope(pSprite->sectnum,pSprite->x,pSprite->y);
+#ifdef YAX_ENABLE
+            actor[spriteNum].floorz = pSprite->z = yax_getflorzofslope(pSprite->sectnum, pSprite->xy);
+#else
+            actor[spriteNum].floorz = pSprite->z = getflorzofslope(pSprite->sectnum, pSprite->x, pSprite->y);
+#endif
         else
 #endif
         {
@@ -5865,7 +5891,11 @@ ACTOR_STATIC void G_MoveMisc(void)  // STATNUM 5
                 if (pSprite->sectnum == -1)
                     DELETE_SPRITE_AND_CONTINUE(spriteNum);
 
+#ifdef YAX_ENABLE
+                int const floorZ = yax_getflorzofslope(pSprite->sectnum, pSprite->xy);
+#else
                 int const floorZ = getflorzofslope(pSprite->sectnum, pSprite->x, pSprite->y);
+#endif
 
                 if (pSprite->z > floorZ)
                 {
@@ -8247,7 +8277,7 @@ ACTOR_STATIC void G_MoveEffectors(void)   //STATNUM 3
                 if (pSprite->owner == spriteNum)
                 {
                     pSprite->owner = A_FindLocatorWithHiLoTags(pSprite->hitag, pData[0], -1);
-                    
+
                     //reset our elapsed time since reaching a locator
                     pData[1] = 0;
                     //store our starting point
@@ -8852,7 +8882,7 @@ static void A_DoLight(int spriteNum)
         {
             if (!(--practor[spriteNum].lightcount))
                 A_DeleteLight(spriteNum);
-        }    
+        }
     }
     else if (((sector[pSprite->sectnum].floorz - sector[pSprite->sectnum].ceilingz) < 16) || pSprite->z > sector[pSprite->sectnum].floorz || pSprite->z > actor[spriteNum].floorz ||
         (pSprite->picnum != SECTOREFFECTOR && ((pSprite->cstat & 32768) || pSprite->yrepeat < 4)) ||
@@ -8980,7 +9010,7 @@ static void A_DoLight(int spriteNum)
                 if (!practor[spriteNum].lightcount)
                 {
                     // XXX: This block gets CODEDUP'd too much.
-                    vec3_t const offset = { ((sintable[(pSprite->ang+512)&2047])>>6), ((sintable[(pSprite->ang)&2047])>>6), LIGHTZOFF(spriteNum) };                
+                    vec3_t const offset = { ((sintable[(pSprite->ang+512)&2047])>>6), ((sintable[(pSprite->ang)&2047])>>6), LIGHTZOFF(spriteNum) };
                     G_AddGameLight(spriteNum, pSprite->sectnum, offset, LIGHTRAD(spriteNum), 0, 100,
                         240+(160<<8)+(80<<16), pSprite->yrepeat > 32 ? PR_LIGHT_PRIO_HIGH_GAME : PR_LIGHT_PRIO_LOW_GAME);
                 }
@@ -9053,7 +9083,7 @@ static void A_DoLight(int spriteNum)
             case RPG__:
                 G_AddGameLight(spriteNum, pSprite->sectnum, { 0, 0, LIGHTZOFF(spriteNum) }, LIGHTRAD3(spriteNum)<<2, 0, 100,255+(95<<8), PR_LIGHT_PRIO_LOW_GAME);
                 break;
-            case SHOTSPARK1__:            
+            case SHOTSPARK1__:
                 if (AC_ACTION_COUNT(actor[spriteNum].t_data) == 0) // check for first frame of action
                 {
                     vec3_t const offset = { ((sintable[(pSprite->ang+512)&2047])>>6), ((sintable[(pSprite->ang)&2047])>>6), LIGHTZOFF(spriteNum) };

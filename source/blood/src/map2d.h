@@ -32,10 +32,10 @@ public:
     int forward, strafe;
     fix16_t turn;
     CViewMap();
-    void sub_25C38(int, int, int, short, char);
-    void sub_25C74(void);
-    void sub_25DB0(spritetype *pSprite);
-    void sub_25E84(int *, int*);
+    void Init(int, int, int, short, char);
+    void Draw(void);
+    void Process(int nX, int nY, short nAng);
+    void SetPos(int *, int*);
     void FollowMode(char);
 };
 

@@ -173,6 +173,7 @@ memberlabel_t const WallLabels[]=
     { "uhitag", WALL_UHITAG, sizeof(wall[0].hitag) | LABEL_UNSIGNED, 0, offsetof(uwalltype, hitag) },
 
     { "blend", WALL_BLEND, 0, 0, -1 },
+    { "ang",   WALL_ANG,   0, 0, -1 },
 };
 
 int32_t __fastcall VM_GetWall(int const wallNum, int32_t labelNum)
@@ -186,7 +187,8 @@ int32_t __fastcall VM_GetWall(int const wallNum, int32_t labelNum)
             labelNum = wallext[wallNum].blend;
 #endif
             break;
-
+        case WALL_ANG: labelNum = (getangle(wall[wall[wallNum].point2].x - wall[wallNum].x,
+                                            wall[wall[wallNum].point2].y - wall[wallNum].y) + 512) & 2047; break;
         default: EDUKE32_UNREACHABLE_SECTION(labelNum = -1; break);
     }
 
@@ -294,8 +296,24 @@ void __fastcall VM_SetSprite(int const spriteNum, int const labelNum, int const 
 
     switch (labelNum)
     {
-        case ACTOR_SECTNUM: changespritesect(spriteNum, newValue); break;
-        case ACTOR_STATNUM: changespritestat(spriteNum, newValue); break;
+        case ACTOR_SECTNUM:
+            if (((unsigned)spriteNum >= MAXSPRITES) | ((unsigned)newValue >= MAXSECTORS))
+            {
+                CON_ERRPRINTF("invalid sectnum %d for sprite %d\n", newValue, spriteNum);
+                // unset VM_RETURN so we don't break existing stuff that's wrong any worse than it already was
+                vm.flags &= ~VM_RETURN;
+            }
+            else changespritesect(spriteNum, newValue);
+            break;
+        case ACTOR_STATNUM: 
+            if (((unsigned)spriteNum >= MAXSPRITES) | ((unsigned)newValue >= MAXSTATUS))
+            {
+                CON_ERRPRINTF("invalid statnum %d for sprite %d\n", newValue, spriteNum);
+                // unset VM_RETURN so we don't break existing stuff that's wrong any worse than it already was
+                vm.flags &= ~VM_RETURN;
+            }
+            else changespritestat(spriteNum, newValue);
+            break;
         case ACTOR_HTG_T: a.t_data[lParm2] = newValue; break;
         case ACTOR_ALPHA: ext.alpha = (float)newValue * (1.f / 255.0f); break;
         default: EDUKE32_UNREACHABLE_SECTION(break);
@@ -349,11 +367,11 @@ memberlabel_t const TsprLabels[] =
     LABEL(sprite, extra,    "tsprextra",    ACTOR_EXTRA),
 };
 
-memberlabel_t const PlayerLabels[] = 
+memberlabel_t const PlayerLabels[] =
 {
     MEMBER(g_player[0].ps, zoom,                        PLAYER_ZOOM),
-    {                                "loogiex",         PLAYER_LOOGIEX, LABEL_HASPARM2, (int16_t)ARRAY_SIZE(g_player[0].ps->loogie), -1 },
-    {                                "loogiey",         PLAYER_LOOGIEY, LABEL_HASPARM2, (int16_t)ARRAY_SIZE(g_player[0].ps->loogie), -1 },
+    {                                "loogiex",         PLAYER_LOOGIEX, LABEL_HASPARM2, (int16_t)MAX_LOOGIES, -1 },
+    {                                "loogiey",         PLAYER_LOOGIEY, LABEL_HASPARM2, (int16_t)MAX_LOOGIES, -1 },
     MEMBER(g_player[0].ps, numloogs,                    PLAYER_NUMLOOGS),
     MEMBER(g_player[0].ps, loogcnt,                     PLAYER_LOOGCNT),
      LABEL(g_player[0].ps, pos.x,    "posx",            PLAYER_POSX),
@@ -566,6 +584,8 @@ memberlabel_t const PlayerLabels[] =
     MEMBER(g_player[0].ps, jetpackzincrement,           PLAYER_JETPACKZINCREMENT),
     MEMBER(g_player[0].ps, olook_ang,                   PLAYER_OLOOK_ANG),
     MEMBER(g_player[0].ps, orotscrnang,                 PLAYER_OROTSCRNANG),
+    MEMBER(g_player[0].ps, floorzrebound,               PLAYER_FLOORZREBOUND),
+    MEMBER(g_player[0].ps, floorzcutoff,                PLAYER_FLOORZCUTOFF),
 };
 
 int32_t __fastcall VM_GetPlayer(int const playerNum, int32_t labelNum, int const lParm2)
@@ -1100,7 +1120,8 @@ memberlabel_t const UserdefsLabels[]=
     { "gamepadactive",          USERDEFS_GAMEPADACTIVE,          0, 0, -1 },
     { "m_newgamecustom",        USERDEFS_M_NEWGAMECUSTOM,        0, 0, -1 },
     { "m_newgamecustomsub",     USERDEFS_M_NEWGAMECUSTOMSUB,     0, 0, -1 },
-    { "m_newgamecustoml3",      USERDEFS_M_NEWGAMECUSTOML3,      0, 0, -1 }
+    { "m_newgamecustoml3",      USERDEFS_M_NEWGAMECUSTOML3,      0, 0, -1 },
+    { "kick_mode",              USERDEFS_KICK_MODE,              0, 0, -1 },
 };
 
 int32_t __fastcall VM_GetUserdef(int32_t labelNum, int const lParm2)
@@ -1295,6 +1316,7 @@ int32_t __fastcall VM_GetUserdef(int32_t labelNum, int const lParm2)
         case USERDEFS_M_NEWGAMECUSTOM:        labelNum = ud.m_newgamecustom;              break;
         case USERDEFS_M_NEWGAMECUSTOMSUB:     labelNum = ud.m_newgamecustomsub;           break;
         case USERDEFS_M_NEWGAMECUSTOML3:      labelNum = ud.m_newgamecustoml3;           break;
+        case USERDEFS_KICK_MODE:              labelNum = ud.kick_mode;                    break;
 
         default: EDUKE32_UNREACHABLE_SECTION(labelNum = -1; break);
     }
@@ -1507,6 +1529,7 @@ void __fastcall VM_SetUserdef(int const labelNum, int const lParm2, int32_t cons
                 if (iSet & (1u<<b))
                     ME_NEWGAMECUSTOMSUBENTRIES[lParm2][b].flags = 0;
             break;
+        case USERDEFS_KICK_MODE:                    ud.kick_mode                     = iSet; break;
     }
 }
 
@@ -1708,4 +1731,3 @@ void VM_InitHashTables(void)
     STRUCT_HASH_SETUP(h_wall,       WallLabels);
 }
 #undef STRUCT_HASH_SETUP
-

@@ -619,7 +619,7 @@ TrackSetup(void)
         // find the first point and save it
         TRAVERSE_SPRITE_STAT(headspritestat[STAT_TRACK + ndx], SpriteNum, NextSprite)
         {
-            if (LOW_TAG_SPRITE(SpriteNum) == TRACK_START)
+            if (sprite[SpriteNum].lotag == TRACK_START)
             {
                 ASSERT(t->NumPoints == 0);
 
@@ -633,7 +633,7 @@ TrackSetup(void)
         {
             int i, nexti;
             auto const sp = (uspritetype const *)&sprite[headspritestat[STAT_TRACK+ndx]];
-            buildprintf("WARNING: Did not find first point of Track Number %d, x %d, y %d\n", ndx, sp->x, sp->y);
+            LOG_F(WARNING, "Did not find first point of Track Number %d, x %d, y %d", ndx, sp->x, sp->y);
             for (i=headspritestat[STAT_TRACK+ndx]; i>=0; i=nexti)
             {
                 // neuter the track's sprite list
@@ -1115,7 +1115,7 @@ SetupSectorObject(short sectnum, short tag)
         //sop->zmid = DIV2(sector[sectnum].floorz + sector[sectnum].ceilingz);
 
         sop->dir = 1;
-        sop->track = HIGH_TAG(sectnum);
+        sop->track = sector[sectnum].hitag;
 
         // spawn a sprite to make it easier to integrate with sprite routines
         New = SpawnSprite(STAT_SO_SP_CHILD, 0, NULL, sectnum,
@@ -1550,7 +1550,7 @@ PlaceActorsOnTracks(void)
         sp = User[i]->SpriteP;
         u = User[i];
 
-        tag = LOW_TAG_SPRITE(i);
+        tag = sprite[i].lotag;
 
         if (tag < TAG_ACTOR_TRACK_BEGIN || tag > TAG_ACTOR_TRACK_END)
             continue;
@@ -1590,7 +1590,7 @@ PlaceActorsOnTracks(void)
 
         if (Track[u->track].NumPoints == 0)
         {
-            buildprintf("WARNING: Sprite %d (%d, %d) placed on track %d with no points!\n", i, TrackerCast(sp->x), TrackerCast(sp->y), u->track);
+            LOG_F(WARNING, "Sprite %d (%d, %d) placed on track %d with no points!", i, TrackerCast(sp->x), TrackerCast(sp->y), u->track);
             continue;
         }
 
@@ -3882,4 +3882,3 @@ saveable_module saveable_track =
     // data
     NULL,0
 };
-

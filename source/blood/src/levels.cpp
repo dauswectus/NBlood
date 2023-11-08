@@ -45,7 +45,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 GAMEOPTIONS gGameOptions;
 
 GAMEOPTIONS gSingleGameOptions = {
-    0, 2, 0, 0, "", "", 2, "", "", 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 3600, 1800, 1800, 7200
+    0, 2, 0, 0, "", "", 2, "", "", 0, 0, 0, 1, 0, 0, 0, 0, 0, 2, 3600, 1800, 1800, 7200,
+    0, 0, LOSTONDEATH, "",
 };
 
 EPISODEINFO gEpisodeInfo[kMaxEpisodes+1];
@@ -84,6 +85,8 @@ void levelOverrideINI(const char *pzIni)
     strcpy(BloodIniFile, pzIni);
 }
 
+static char zSmkPath[BMAX_PATH], zWavPath[BMAX_PATH];
+
 void levelPlayIntroScene(int nEpisode)
 {
     gGameOptions.uGameFlags &= ~kGameFlagPlayIntro;
@@ -93,7 +96,12 @@ void levelPlayIntroScene(int nEpisode)
     ambKillAll();
     seqKillAll();
     EPISODEINFO *pEpisode = &gEpisodeInfo[nEpisode];
-    credPlaySmk(pEpisode->cutsceneASmkPath, pEpisode->cutsceneAWavPath, pEpisode->cutsceneAWavRsrcID);
+    if (!credPlaySmk(pEpisode->cutsceneASmkPath, pEpisode->cutsceneAWavPath, pEpisode->cutsceneAWavRsrcID)) // if failed (files not found), reattempt in movie directory
+    {
+        snprintf(zSmkPath, BMAX_PATH, "movie/%s", pEpisode->cutsceneASmkPath);
+        snprintf(zWavPath, BMAX_PATH, "movie/%s", pEpisode->cutsceneAWavPath);
+        credPlaySmk(zSmkPath, zWavPath, pEpisode->cutsceneAWavRsrcID);
+    }
     scrSetDac();
     viewResizeView(gViewSize);
     credReset();
@@ -112,7 +120,12 @@ void levelPlayEndScene(int nEpisode)
     ambKillAll();
     seqKillAll();
     EPISODEINFO *pEpisode = &gEpisodeInfo[nEpisode];
-    credPlaySmk(pEpisode->cutsceneBSmkPath, pEpisode->cutsceneBWavPath, pEpisode->cutsceneBWavRsrcID);
+    if (!credPlaySmk(pEpisode->cutsceneBSmkPath, pEpisode->cutsceneBWavPath, pEpisode->cutsceneBWavRsrcID)) // if failed (files not found), reattempt in movie directory
+    {
+        snprintf(zSmkPath, BMAX_PATH, "movie/%s", pEpisode->cutsceneBSmkPath);
+        snprintf(zWavPath, BMAX_PATH, "movie/%s", pEpisode->cutsceneBWavPath);
+        credPlaySmk(zSmkPath, zWavPath, pEpisode->cutsceneBWavRsrcID);
+    }
     scrSetDac();
     viewResizeView(gViewSize);
     credReset();

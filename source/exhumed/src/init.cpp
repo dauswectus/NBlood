@@ -474,12 +474,12 @@ void InstallEngine()
                   "There was a problem initializing the engine: %s\n\nThe application will now close.", engineerrstr);
         //TODO:
         //G_Cleanup();
-        ERRprintf("G_Startup: There was a problem initializing the engine: %s\n", engineerrstr);
+        LOG_F(ERROR, "G_Startup: There was a problem initializing the engine: %s", engineerrstr);
         exit(6);
     }
     if (videoSetGameMode(gSetup.fullscreen, gSetup.xdim, gSetup.ydim, gSetup.bpp, 0) < 0)
     {
-        initprintf("Failure setting video mode %dx%dx%d %s! Trying next mode...\n", gSetup.xdim, gSetup.ydim,
+        LOG_F(ERROR, "Failure setting video mode %dx%dx%d %s! Trying next mode...", gSetup.xdim, gSetup.ydim,
                     gSetup.bpp, gSetup.fullscreen ? "fullscreen" : "windowed");
 
         int resIdx = 0;
@@ -498,7 +498,7 @@ void InstallEngine()
 
         while (videoSetGameMode(0, validmode[resIdx].xdim, validmode[resIdx].ydim, bpp, 0) < 0)
         {
-            initprintf("Failure setting video mode %dx%dx%d windowed! Trying next mode...\n",
+            LOG_F(ERROR, "Failure setting video mode %dx%dx%d windowed! Trying next mode...",
                         validmode[resIdx].xdim, validmode[resIdx].ydim, bpp);
 
             if (++resIdx == validmodecnt)

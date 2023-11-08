@@ -81,7 +81,6 @@ CDUDC,
 CSPR,
 };
 
-#pragma pack(push, 1)
 struct CHECKFUNC_INFO
 {
     char (*pFunc)( void );              // function to call the condition
@@ -104,7 +103,6 @@ struct TRACKING_CONDITION
     unsigned int id             : 16;   // x-sprite index of condition
     OBJECT_LIST* objects;               // a dynamic list of objects it contains
 };
-#pragma pack(pop)
 
 static const char* gErrors[] =
 {
@@ -1784,7 +1782,7 @@ static char Cmp(int val, int nArg1, int nArg2)
 static void Error(const char* pFormat, ...)
 {
     char buffer[512], buffer2[512], condType[32];
-    Bsprintf(condType, (pEntry) ? gCheckFuncInfo[pEntry->type].name : "Unknown");
+    strcpy(condType, (pEntry) ? gCheckFuncInfo[pEntry->type].name : "Unknown");
     Bstrupr(condType);
 
     va_list args;

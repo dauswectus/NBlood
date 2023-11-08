@@ -68,8 +68,8 @@ const char* AppTechnicalName = "mapster32";
 #define DEFAULT_GAME_EXEC APPBASENAME ".exe"
 #define DEFAULT_GAME_LOCAL_EXEC APPBASENAME ".exe"
 #elif defined(__APPLE__)
-#define DEFAULT_GAME_EXEC "EDuke32.app/Contents/MacOS/" APPBASENAME
-#define DEFAULT_GAME_LOCAL_EXEC "EDuke32.app/Contents/MacOS/" APPBASENAME
+#define DEFAULT_GAME_EXEC APPNAME ".app/Contents/MacOS/" APPBASENAME
+#define DEFAULT_GAME_LOCAL_EXEC APPNAME ".app/Contents/MacOS/" APPBASENAME
 #else
 #define DEFAULT_GAME_EXEC APPBASENAME
 #define DEFAULT_GAME_LOCAL_EXEC "./" APPBASENAME
@@ -178,10 +178,10 @@ static char spriteshades[MAXSPRITES];
 static char wallpals[MAXWALLS];
 static char sectorpals[MAXSECTORS][2];
 static char spritepals[MAXSPRITES];
-static uint8_t wallflag[(MAXWALLS+7)>>3];
+static uint8_t wallflag[bitmap_size(MAXWALLS)];
 
 #ifdef YAX_ENABLE
-static uint8_t havebunch[YAX_MAXBUNCHES];
+static uint8_t havebunch[bitmap_size(YAX_MAXBUNCHES)];
 static int32_t *tempzar[YAX_MAXBUNCHES];
 
 static int32_t yax_invalidop()
@@ -218,7 +218,7 @@ static int32_t yax_checkslope(int16_t sectnum, int32_t othersectnum)
 #endif
 
 // tile marking in tile selector for custom creation of tile groups
-static uint8_t tilemarked[(MAXTILES+7)>>3];
+static uint8_t tilemarked[bitmap_size(MAXTILES)];
 
 #ifdef POLYMER
 static int16_t spritelightid[MAXSPRITES];
@@ -709,7 +709,7 @@ const char *ExtGetWallCaption(int16_t wallnum)
     static char tempbuf[64];
 
     Bmemset(tempbuf,0,sizeof(tempbuf));
-    
+
     if (bitmap_test(editwall, wallnum))
     {
         Bsprintf(tempbuf,"%d", wallength(wallnum));
@@ -1241,7 +1241,8 @@ void ExtShowWallData(int16_t wallnum)       //F6
 // formerly Show2dText and Show3dText
 static void ShowFileText(const char *name)
 {
-    int32_t fp,t;
+    buildvfs_kfd fp;
+    int32_t t;
     uint8_t x=0,y=4,xmax=0,xx=0,col=0;
 
     if (!in3dmode())
@@ -1250,7 +1251,7 @@ static void ShowFileText(const char *name)
         drawgradient();
     }
 
-    if ((fp=kopen4load(name,0)) == -1)
+    if ((fp=kopen4load(name,0)) == buildvfs_kfd_invalid)
     {
         Bsprintf(tempbuf, "ERROR: file \"%s\" not found.", name);
         if (in3dmode())
@@ -1994,11 +1995,7 @@ static void SoundDisplay(void)
 int32_t AmbienceToggle = 1;
 int32_t ParentalLock = 0;
 
-uint8_t g_ambiencePlaying[(MAXSPRITES+7)>>3];
-
-#define testbit(bitarray, i) (bitarray[(i)>>3] & pow2char[(i)&7])
-#define setbit(bitarray, i) bitarray[(i)>>3] |= pow2char[(i)&7]
-#define clearbit(bitarray, i) bitarray[(i)>>3] &= ~pow2char[(i)&7]
+uint8_t g_ambiencePlaying[bitmap_size(MAXSPRITES)];
 
 // adapted from actors.c
 static void M32_MoveFX(void)
@@ -2013,9 +2010,9 @@ static void M32_MoveFX(void)
 
         if (s->picnum != MUSICANDSFX)
         {
-            if (testbit(g_ambiencePlaying, i))
+            if (bitmap_test(g_ambiencePlaying, i))
             {
-                clearbit(g_ambiencePlaying, i);
+                bitmap_clear(g_ambiencePlaying, i);
                 S_StopEnvSound(s->lotag, i);
             }
         }
@@ -2029,7 +2026,7 @@ static void M32_MoveFX(void)
                 if ((g_sounds[s->lotag].m & SF_MSFX))
                 {
                     x = dist(&pos,s);
-                    if (x < ht && !testbit(g_ambiencePlaying, i) && FX_VoiceAvailable(g_sounds[s->lotag].pr-1))
+                    if (x < ht && !bitmap_test(g_ambiencePlaying, i) && FX_VoiceAvailable(g_sounds[s->lotag].pr-1))
                     {
                         char om = g_sounds[s->lotag].m;
                         if (g_numEnvSoundsPlaying == NumVoices)
@@ -2037,7 +2034,7 @@ static void M32_MoveFX(void)
                             for (j = headspritestat[0]; j >= 0; j = nextspritestat[j])
                             {
                                 if (s->picnum == MUSICANDSFX && j != i && sprite[j].lotag < 999 &&
-                                        testbit(g_ambiencePlaying, j) && dist(&sprite[j],&pos) > x)
+                                    bitmap_test(g_ambiencePlaying, j) && dist(&sprite[j],&pos) > x)
                                 {
                                     S_StopEnvSound(sprite[j].lotag,j);
                                     break;
@@ -2049,11 +2046,11 @@ static void M32_MoveFX(void)
                         g_sounds[s->lotag].m |= SF_LOOP;
                         A_PlaySound(s->lotag,i);
                         g_sounds[s->lotag].m = om;
-                        setbit(g_ambiencePlaying, i);
+                        bitmap_set(g_ambiencePlaying, i);
                     }
-                    if (x >= ht && testbit(g_ambiencePlaying, i))
+                    if (x >= ht && bitmap_test(g_ambiencePlaying, i))
                     {
-                        clearbit(g_ambiencePlaying, i);
+                        bitmap_clear(g_ambiencePlaying, i);
                         S_StopEnvSound(s->lotag,i);
                     }
                 }
@@ -2095,16 +2092,16 @@ static void ExtSE40Draw(int32_t spnum,int32_t x,int32_t y,int32_t z,int16_t a,in
     static int32_t tempsectorpicnum[MAXSECTORS];
 
     int32_t j=0,k=0;
-    int32_t floor1=0,floor2=0,ok=0,fofmode=0,draw_both=0;
+    int32_t floor1 = 0, floor2 = 0, fofmode = 0, draw_both = 0;
     int32_t offx,offy,offz;
 
     if (sprite[spnum].ang!=512) return;
 
     // Things are a little different now, as we allow for masked transparent
     // floors and ceilings. So the FOF textures is no longer required
-    //	if (!(gotpic[FOF>>3]&(1<<(FOF&7))))
+    //	if (!bitmap_test(gotpic, FOF))
     //		return;
-    //	gotpic[FOF>>3] &= ~(1<<(FOF&7));
+    //	bitmap_clear(gotpic, FOF);
 
     if (tilesiz[562].x)
     {
@@ -2128,7 +2125,6 @@ static void ExtSE40Draw(int32_t spnum,int32_t x,int32_t y,int32_t z,int16_t a,in
 
     // sectnum=sprite[j].sectnum;
     // sectnum=cursectnum;
-    ok++;
 
     /*  recursive?
     for(j=0;j<MAXSPRITES;j++)
@@ -2141,19 +2137,15 @@ static void ExtSE40Draw(int32_t spnum,int32_t x,int32_t y,int32_t z,int16_t a,in
     }
     */
 
-    // if(ok==0) { Message("no fof",RED); return; }
-
     for (j=0; j<MAXSPRITES; j++)
     {
         if (sprite[j].picnum==1 && sprite[j].lotag==fofmode && sprite[j].hitag==sprite[floor1].hitag)
         {
             floor1=j;
             fofmode=sprite[j].lotag;
-            ok++;
             break;
         }
     }
-    // if(ok==1) { Message("no floor1",RED); return; }
 
     if (fofmode==40) k=41;
     else k=40;
@@ -2163,7 +2155,6 @@ static void ExtSE40Draw(int32_t spnum,int32_t x,int32_t y,int32_t z,int16_t a,in
         if (sprite[j].picnum==1 && sprite[j].lotag==k && sprite[j].hitag==sprite[floor1].hitag)
         {
             floor2=j;
-            ok++;
             break;
         }
     }
@@ -2186,8 +2177,6 @@ static void ExtSE40Draw(int32_t spnum,int32_t x,int32_t y,int32_t z,int16_t a,in
         offz -= SPRITESEC(floor1).floorz;
     else
         offz -= SPRITESEC(floor1).ceilingz;
-
-    // if(ok==2) { Message("no floor2",RED); return; }
 
     for (j=0; j<MAXSPRITES; j++) // raise ceiling or floor
     {
@@ -2455,9 +2444,11 @@ static void editorCalculateTileViewerDimensions(int32_t *nXTiles, int32_t *nYTil
     do
     {
         nx = xdim / ZOOMSIZ(*nzoom);
-        ny = (ydim / ZOOMSIZ(*nzoom))+1;
+        ny = (ydim / ZOOMSIZ(*nzoom)) + 1;
         // Refuse to draw less than half of a row.
-        if (ZOOMSIZ(*nzoom)>>1 < 12) ny--;
+        if ((ZOOMSIZ(*nzoom) >> 1) < 12)
+            ny--;
+
         ndisplayed = nx * ny;
 
         if (!ndisplayed)
@@ -2478,7 +2469,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
     if (PRESSED_KEYSC(LEFT))
     {
         if (eitherCTRL)  // same as HOME, for consistency with CTRL-UP/DOWN
-            tileNum = (tileNum/nXTiles)*nXTiles;
+            tileNum = (tileNum / nXTiles) * nXTiles;
         else
             tileNum--;
     }
@@ -2486,7 +2477,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
     if (PRESSED_KEYSC(RIGHT))
     {
         if (eitherCTRL)  // same as END, for consistency with CTRL-UP/DOWN
-            tileNum = ((tileNum+nXTiles)/nXTiles)*nXTiles - 1;
+            tileNum = ((tileNum + nXTiles) / nXTiles) * nXTiles - 1;
         else
             tileNum++;
     }
@@ -2494,7 +2485,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
     if (PRESSED_KEYSC(UP))
     {
         if (eitherCTRL)
-            while (tileNum-nXTiles >= iTopLeftTile)
+            while (tileNum - nXTiles >= iTopLeftTile)
                 tileNum -= nXTiles;
         else
             tileNum -= nXTiles;
@@ -2503,7 +2494,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
     if (PRESSED_KEYSC(DOWN))
     {
         if (eitherCTRL)
-            while (tileNum+nXTiles < iTopLeftTile + nDisplayedTiles)
+            while (tileNum + nXTiles < iTopLeftTile + nDisplayedTiles)
                 tileNum += nXTiles;
         else
             tileNum += nXTiles;
@@ -2520,7 +2511,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
     if (PRESSED_KEYSC(PGDN))
     {
         if (eitherCTRL)
-            tileNum = localartlookupnum-1;
+            tileNum = localartlookupnum - 1;
         else
             tileNum += nDisplayedTiles;
     }
@@ -2530,7 +2521,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
         if (eitherCTRL)
             tileNum = iTopLeftTile;
         else
-            tileNum = (tileNum/nXTiles)*nXTiles;
+            tileNum = (tileNum / nXTiles) * nXTiles;
     }
 
     if (PRESSED_KEYSC(END))
@@ -2538,7 +2529,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
         if (eitherCTRL)
             tileNum = iTopLeftTile + nDisplayedTiles - 1;
         else
-            tileNum = ((tileNum+nXTiles)/nXTiles)*nXTiles - 1;
+            tileNum = ((tileNum + nXTiles) / nXTiles) * nXTiles - 1;
     }
 
     if (PRESSED_KEYSC(DASH))
@@ -2567,7 +2558,7 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
     }
 
     if (PRESSED_KEYSC(BS))
-        globalpal = 0;     
+        globalpal = 0;
 
     // 'U'  KEYPRESS : go straight to user defined art
     if (PRESSED_KEYSC(U))
@@ -2620,30 +2611,26 @@ static int32_t editorTilePickerBasicKeys(int32_t tileNum, int32_t nXTiles, int32
 
 static int32_t editorCalculateTileUsage(int32_t idInitialTile)
 {
-    int32_t gap, temp;
-    int32_t i;
-
-    idInitialTile = clamp(idInitialTile, 0, MAXUSERTILES-1);
+    idInitialTile = clamp(idInitialTile, 0, MAXUSERTILES - 1);
 
     keystatus[KEYSC_V] = 0;
 
-    for (i = 0; i < MAXUSERTILES; i++)
+    for (int32_t i = 0; i < MAXUSERTILES; i++)
     {
         localartfreq[i] = 0;
         localartlookup[i] = i;
     }
 
-
     switch (searchstat)
     {
     case SEARCH_WALL:
-        for (i = 0; i < numwalls; i++)
+        for (int32_t i = 0; i < numwalls; i++)
             localartfreq[wall[i].picnum]++;
         break;
 
     case SEARCH_CEILING:
     case SEARCH_FLOOR:
-        for (i = 0; i < numsectors; i++)
+        for (int32_t i = 0; i < numsectors; i++)
         {
             localartfreq[sector[i].ceilingpicnum]++;
             localartfreq[sector[i].floorpicnum]++;
@@ -2651,12 +2638,12 @@ static int32_t editorCalculateTileUsage(int32_t idInitialTile)
         break;
 
     case SEARCH_SPRITE:
-        for (i=0; i<MAXSPRITES; i++)
+        for (int32_t i = 0; i < MAXSPRITES; i++)
             localartfreq[sprite[i].picnum] += (sprite[i].statnum < MAXSTATUS);
         break;
 
     case SEARCH_MASKWALL:
-        for (i = 0; i < numwalls; i++)
+        for (int32_t i = 0; i < numwalls; i++)
             localartfreq[wall[i].overpicnum]++;
         break;
 
@@ -2664,18 +2651,17 @@ static int32_t editorCalculateTileUsage(int32_t idInitialTile)
         break;
     }
 
-
     //
     //	Sort tiles into frequency order
     //
 
-    gap = MAXUSERTILES / 2;
+    int32_t gap = MAXUSERTILES / 2;
 
     do
     {
-        for (i = 0; i < MAXUSERTILES-gap; i++)
+        for (int32_t i = 0; i < MAXUSERTILES-gap; i++)
         {
-            temp = i;
+            int32_t temp = i;
 
             while (temp >= 0 && localartfreq[temp]<localartfreq[temp+gap])
             {
@@ -2697,13 +2683,13 @@ static int32_t editorCalculateTileUsage(int32_t idInitialTile)
                 temp -= gap;
             }
         }
+
         gap >>= 1;
     } while (gap > 0);
 
     //
     // Set up count of number of used tiles
     //
-
     localartlookupnum = 0;
     while (localartfreq[localartlookupnum] > 0)
         localartlookupnum++;
@@ -2711,12 +2697,11 @@ static int32_t editorCalculateTileUsage(int32_t idInitialTile)
     //
     // Check : If no tiles used at all then switch to displaying all tiles
     //
-
     if (!localartfreq[0])
     {
         localartlookupnum = MAXUSERTILES;
 
-        for (i = 0; i < MAXUSERTILES; i++)
+        for (int32_t i = 0; i < MAXUSERTILES; i++)
         {
             localartlookup[i] = i;
             localartfreq[i] = 0; // Terrible bodge : zero tilefreq's not displayed in tile view. Still, when in Rome ... :-)
@@ -2728,31 +2713,29 @@ static int32_t editorCalculateTileUsage(int32_t idInitialTile)
 
 static int32_t editorGetTile(int32_t idInitialTile)
 {
-    int32_t zoomsz;
-    int32_t nXTiles = 0, nYTiles = 0, nDisplayedTiles = 0;
-    int32_t tileNum, iTopLeftTile, iLastTile;
-    int32_t idSelectedTile, idInitialPal;
-    int32_t scrollmode;
-    int32_t mousedx, mousedy, mtile=0, omousex=searchx, omousey=searchy, moffset=0;
-    int32_t nmoffset=0;
+    int32_t mtile = 0, omousex = searchx, omousey = searchy, moffset = 0;
+    int32_t nmoffset = 0;
 
-    int32_t noTilesMarked=1;
-    int32_t mark_lastk = -1;
+    int32_t noTilesMarked = 1;
+    int32_t mark_lastk    = -1;
 
     FX_StopAllSounds();
     S_ClearSoundLocks();
 
     pushDisableFog();
 
-    iLastTile = tileNum = idSelectedTile = editorCalculateTileUsage(idInitialTile);
-    idInitialPal = globalpal;
+    int32_t const idInitialPal = globalpal;
 
+    int32_t tileNum   = editorCalculateTileUsage(idInitialTile);
+    int32_t iLastTile = tileNum, idSelectedTile = tileNum;
+
+    int32_t nXTiles = 0, nYTiles = 0, nDisplayedTiles = 0;
     editorCalculateTileViewerDimensions(&nXTiles, &nYTiles, &nDisplayedTiles, &s_Zoom);
 
-    iTopLeftTile = tileNum - (tileNum % nXTiles);
-    iTopLeftTile = clamp(iTopLeftTile, 0, MAXUSERTILES-nDisplayedTiles);
+    int32_t iTopLeftTile = tileNum - (tileNum % nXTiles);
+    iTopLeftTile = clamp(iTopLeftTile, 0, MAXUSERTILES - nDisplayedTiles);
 
-    zoomsz = ZOOMSIZ(s_Zoom);
+    int32_t zoomsz = ZOOMSIZ(s_Zoom);
 
     searchx = ((tileNum-iTopLeftTile)%nXTiles)*zoomsz + (zoomsz>>1);
     searchy = ((tileNum-iTopLeftTile)/nXTiles)*zoomsz + (zoomsz>>1);
@@ -2801,9 +2784,9 @@ static int32_t editorGetTile(int32_t idInitialTile)
     {
         editorCalculateTileViewerDimensions(&nXTiles, &nYTiles, &nDisplayedTiles, &nzoom);
 
-        int32_t clock = (int32_t)(totalclock - lastclock);
+        int32_t const clock = (int32_t)(totalclock - lastclock);
 
-        if ((int32_t)clock > 3)
+        if (clock > 3)
         {
             lastclock = lastclock + 4;
             omoffset = nmoffset;
@@ -2811,28 +2794,22 @@ static int32_t editorGetTile(int32_t idInitialTile)
             s_Zoom = nzoom;
         }
 
-        int32_t smoothratio = calc_smoothratio(totalclock, lastclock, 30);
-        moffset = nmoffset - mulscale16(65536-smoothratio, nmoffset - omoffset);
+        int32_t const smoothratio = calc_smoothratio(totalclock, lastclock, 30);
+
+        moffset = nmoffset - mulscale16(65536 - smoothratio, nmoffset - omoffset);
         //OSD_Printf("moffset %d for smoothratio %d\n", moffset, smoothratio);
-        zoomsz = ZOOMSIZ(nzoom) - mulscale16(65536-smoothratio, ZOOMSIZ(nzoom) - ZOOMSIZ(ozoom));
+        zoomsz = ZOOMSIZ(nzoom) - mulscale16(65536 - smoothratio, ZOOMSIZ(nzoom) - ZOOMSIZ(ozoom));
         //moffset = nmoffset;
         //zoomsz = ZOOMSIZ(nzoom);
-        int32_t ret = DrawTiles(iTopLeftTile, (tileNum >= localartlookupnum) ? localartlookupnum-1 : tileNum,
-                                nXTiles, nYTiles, zoomsz, moffset,
-                                (tilesel_showerr && (tileNum==iLastTile || (tilesel_showerr=0))));
+        DrawTiles(iTopLeftTile, (tileNum >= localartlookupnum) ? localartlookupnum-1 : tileNum,
+                  nXTiles, nYTiles, zoomsz, moffset,
+                  (tilesel_showerr && (tileNum==iLastTile || (tilesel_showerr=0))));
 
         OSD_DispatchQueued();
 
         if (handleevents())
             quitevent = 0;
 
-        if (ret==0)
-        {
-            // SDL seems to miss mousewheel events when rotated slowly.
-            //if (moffset == nmoffset)
-            //    idle_waitevent_timeout(500);
-
-        }
         iLastTile = tileNum;
 
         bstatus = mouseReadButtons();
@@ -2841,6 +2818,8 @@ static int32_t editorGetTile(int32_t idInitialTile)
         editorMaybeLockMouse(!!(bstatus & ~(16|32)));
 
         if (osdvisible) continue;
+
+        int32_t mousedx, mousedy;
 
         if (g_mouseLockedToWindow)
         {
@@ -2859,25 +2838,26 @@ static int32_t editorGetTile(int32_t idInitialTile)
 
             g_mousePos = {};
 
-            searchx = g_mouseAbs.x/upscalefactor;
-            searchy = g_mouseAbs.y/upscalefactor;
+            searchx = g_mouseAbs.x / upscalefactor;
+            searchy = g_mouseAbs.y / upscalefactor;
         }
 
-        if (bstatus&2)
+        if (bstatus & 2)
         {
             searchx -= mousedx;
             searchy += mousedy;
 
-            if (doSmoothScrolling(mousedy<<1))
-                searchy -= mousedy<<1;
+            if (doSmoothScrolling(mousedy << 1))
+                searchy -= mousedy << 1;
         }
 
         // Keep the pointer visible at all times.
-        int32_t temp = min(zoomsz>>1, 12);
-        inpclamp(&searchx, temp, nXTiles * zoomsz-1);
-        inpclamp(&searchy, temp, ydim-temp);
+        int32_t temp = min(zoomsz >> 1, 12);
+        inpclamp(&searchx, temp, nXTiles * zoomsz - 1);
+        inpclamp(&searchy, temp, ydim - temp);
 
-        scrollmode = !(eitherCTRL^revertCTRL);
+        bool const scrollmode = !(eitherCTRL ^ revertCTRL);
+
         if (bstatus&16 && scrollmode && iTopLeftTile > 0)
         {
             g_mouseBits &= ~16;
@@ -2895,7 +2875,6 @@ static int32_t editorGetTile(int32_t idInitialTile)
         //	Adjust top-left to ensure tilenum is within displayed range of tiles
         //
 
-
         //while (tileNum < iTopLeftTile - (nmoffset<0?nXTiles:0))
         //    iTopLeftTile -= nXTiles;
 
@@ -2905,19 +2884,19 @@ static int32_t editorGetTile(int32_t idInitialTile)
         if ((nmoffset < 0 && iTopLeftTile > localartlookupnum - nDisplayedTiles - 1) || (nmoffset > 0 && iTopLeftTile == 0))
         {
             debug_break();
-            nmoffset=0;
-            omoffset=0;
+            nmoffset = 0;
+            omoffset = 0;
         }
 
-        if (mtile!=tileNum) // if changed by keyboard, update mouse cursor
+        if (mtile != tileNum)  // if changed by keyboard, update mouse cursor
         {
-            tileNum = clamp(tileNum, 0, min(MAXUSERTILES-1, localartlookupnum-1));
-            searchx = ((tileNum-iTopLeftTile)%nXTiles) * zoomsz + (zoomsz>>1);
-            searchy = ((tileNum-iTopLeftTile)/nXTiles) * zoomsz + (zoomsz>>1) + nmoffset;
+            tileNum = clamp(tileNum, 0, min(MAXUSERTILES - 1, localartlookupnum - 1));
+            searchx = ((tileNum - iTopLeftTile) % nXTiles) * zoomsz + (zoomsz >> 1);
+            searchy = ((tileNum - iTopLeftTile) / nXTiles) * zoomsz + (zoomsz >> 1) + nmoffset;
 
-            temp = min(zoomsz>>1, 12);
-            inpclamp(&searchx, temp, xdim-temp);
-            inpclamp(&searchy, temp, ydim-temp);
+            temp = min(zoomsz >> 1, 12);
+            inpclamp(&searchx, temp, xdim - temp);
+            inpclamp(&searchy, temp, ydim - temp);
 
             // HACK? FIXME? XXX? who knows!
             editorMaybeWarpMouse(searchx, searchy);
@@ -2925,14 +2904,14 @@ static int32_t editorGetTile(int32_t idInitialTile)
 
         iTopLeftTile = clamp(iTopLeftTile, 0, MAXUSERTILES - nDisplayedTiles);
 
-        mtile = tileNum = searchx/zoomsz + ((searchy-nmoffset)/zoomsz)*nXTiles + iTopLeftTile;
+        mtile = tileNum = searchx / zoomsz + ((searchy - nmoffset) / zoomsz) * nXTiles + iTopLeftTile;
         //while (tileNum >= iTopLeftTile + nDisplayedTiles)
         //{
         //    tileNum -= nXTiles;
         //    mtile = tileNum;
         //}
 
-        synctics = (int32_t) totalclock-lockclock;
+        synctics = (int32_t)totalclock - lockclock;
         lockclock += synctics;
 
         // Zoom in / out using numeric key pad's / and * keys
@@ -2945,7 +2924,7 @@ static int32_t editorGetTile(int32_t idInitialTile)
                 bstatus &= ~16;
                 inputchecked = 1;
 
-                if (ZOOMSIZ(nzoom+1) <= xdim && ZOOMSIZ(nzoom+1) <= ydim)
+                if (ZOOMSIZ(nzoom + 1) <= xdim && ZOOMSIZ(nzoom + 1) <= ydim)
                     nzoom++;
             }
             else
@@ -2958,16 +2937,15 @@ static int32_t editorGetTile(int32_t idInitialTile)
             }
 
             if (tileNum >= localartlookupnum)
-                tileNum = localartlookupnum-1;
+                tileNum = localartlookupnum - 1;
 
             editorCalculateTileViewerDimensions(&nXTiles, &nYTiles, &nDisplayedTiles, &nzoom);
 
-            // Determine if the top-left displayed tile needs to
-            //   alter in order to display selected tile
+            // Determine if the top-left displayed tile needs to change in order to display selected tile.
             iTopLeftTile = tileNum - (tileNum % nXTiles);
             iTopLeftTile = clamp(iTopLeftTile, 0, MAXUSERTILES - nDisplayedTiles);
 
-            // scroll window so mouse points the same tile as it was before zooming
+            // Scroll window so mouse points to the same tile as it was before zooming.
             iTopLeftTile -= searchx/ZOOMSIZ(nzoom) + ((searchy-nmoffset)/ZOOMSIZ(nzoom))*nXTiles + iTopLeftTile-tileNum;
         }
 
@@ -2995,44 +2973,32 @@ static int32_t editorGetTile(int32_t idInitialTile)
                 tileNum = OnGotoTile(tileNum);
         }
 
-        if (oldtile != tileNum && (unsigned)tileNum > (unsigned)nXTiles)
-        {
-            while (iTopLeftTile + nDisplayedTiles - tileNum - 1 < nXTiles)
-                iTopLeftTile += nXTiles;
-
-            while (tileNum < iTopLeftTile + nXTiles)
-                iTopLeftTile -= nXTiles;
-
-        }
-
-        if (tileNum < nXTiles) iTopLeftTile = 0;
-        else if (tileNum >= MAXUSERTILES-nXTiles) iTopLeftTile = MAXUSERTILES-nDisplayedTiles;
-
         // 'S' KEYPRESS: search for named tile
         if (PRESSED_KEYSC(S))
         {
             static char laststr[25] = "";
-            const char *searchstr = getstring_simple("Search for tile name: ", laststr, sizeof(names[0])-1, 1);
             static char buf[2][25];
+
+            const char *searchstr = getstring_simple("Search for tile name: ", laststr, sizeof(names[0]) - 1, 1);
 
             if (searchstr && searchstr[0])
             {
-                int32_t i, i0, slen=Bstrlen(searchstr)-1;
+                int32_t const slen   = Bstrlen(searchstr) - 1;
+                int32_t const i0     = localartlookup[tileNum];
+                bool const    anchor = (searchstr[0] == '^');
 
                 Bstrncpyz(laststr, searchstr, 25);
-                i0 = localartlookup[tileNum];
-
                 Bmemcpy(buf[0], laststr, 25);
                 Bstrupr(buf[0]);
 
-                for (i=(i0+1)%MAXUSERTILES; i!=i0; i=(i+1)%MAXUSERTILES)
+                for (int32_t i = (i0 + 1) % MAXUSERTILES; i != i0; i = (i + 1) % MAXUSERTILES)
                 {
                     Bmemcpy(buf[1], names[i], 25);
-                    buf[1][24]=0;
+                    buf[1][24] = 0;
                     Bstrupr(buf[1]);
 
-                    if ((searchstr[0]=='^' && !Bstrncmp(buf[1], buf[0]+1, slen)) ||
-                        (searchstr[0]!='^' && Bstrstr(buf[1], buf[0])))
+                    if ((anchor && !Bstrncmp(buf[1], buf[0] + 1, slen)) ||
+                        (!anchor && Bstrstr(buf[1], buf[0])))
                     {
                         SelectAllTiles(i);
                         tileNum = i;
@@ -3043,6 +3009,21 @@ static int32_t editorGetTile(int32_t idInitialTile)
 
             g_mousePos.x = g_mousePos.y = g_mouseBits = 0;
         }
+
+        // See if we need to adjust for a change of tile selection.
+        if (oldtile != tileNum && (unsigned)tileNum > (unsigned)nXTiles)
+        {
+            while (iTopLeftTile + nDisplayedTiles - tileNum - 1 < nXTiles)
+                iTopLeftTile += nXTiles;
+
+            while (tileNum < iTopLeftTile + nXTiles)
+                iTopLeftTile -= nXTiles;
+        }
+
+        if (tileNum < nXTiles)
+            iTopLeftTile = 0;
+        else if (tileNum >= MAXUSERTILES - nXTiles)
+            iTopLeftTile = MAXUSERTILES - nDisplayedTiles;
 
         // SPACE keypress: mark/unmark selected tile
         if (PRESSED_KEYSC(SPACE))
@@ -3057,7 +3038,7 @@ static int32_t editorGetTile(int32_t idInitialTile)
                 }
                 else
                 {
-                    int32_t k=tileNum, kend, dir;
+                    int32_t k = tileNum, kend, dir;
 
                     if (noTilesMarked)
                     {
@@ -3066,10 +3047,10 @@ static int32_t editorGetTile(int32_t idInitialTile)
                                         " To reset, press LCtrl-RShift-SPACE.");
                     }
 
-                    if (mark_lastk>=0 && eitherCTRL)
+                    if (mark_lastk >= 0 && eitherCTRL)
                     {
                         kend = mark_lastk;
-                        dir = ksgn(mark_lastk-k);
+                        dir  = ksgn(mark_lastk - k);
                     }
                     else
                     {
@@ -3079,10 +3060,10 @@ static int32_t editorGetTile(int32_t idInitialTile)
 
                     mark_lastk = k;
 
-                    for (; dir==0 || dir*(kend-k)>=1; k+=dir)
+                    for (; dir == 0 || dir * (kend - k) >= 1; k += dir)
                     {
-                        tilemarked[localartlookup[k]>>3] ^= pow2char[localartlookup[k]&7];
-                        if (dir==0)
+                        bitmap_flip(tilemarked, localartlookup[k]);
+                        if (dir == 0)
                             break;
                     }
                 }
@@ -3090,11 +3071,14 @@ static int32_t editorGetTile(int32_t idInitialTile)
         }
     }
 
-    if ((keystatus[KEYSC_ENTER] || (bstatus&1)) == 0)
+    auto resetToInitial = [&]
     {
         idSelectedTile = idInitialTile;
         globalpal      = idInitialPal;
-    }
+    };
+
+    if ((keystatus[KEYSC_ENTER] || (bstatus&1)) == 0)
+        resetToInitial();
     else
     {
         if (tileNum < localartlookupnum)
@@ -3104,20 +3088,14 @@ static int32_t editorGetTile(int32_t idInitialTile)
 
             // Check : if invalid tile selected, return original tile num
             if (!IsValidTile(idSelectedTile))
-            {
-                idSelectedTile = idInitialTile;
-                globalpal      = idInitialPal;
-            }
+                resetToInitial();
         }
         else
-        {
-            idSelectedTile = idInitialTile;
-            globalpal      = idInitialPal;
-        }
+            resetToInitial();
     }
 
-    searchx=omousex;
-    searchy=omousey;    
+    searchx = omousex;
+    searchy = omousey;
     editorMaybeWarpMouse(searchx, searchy);
     keystatus[KEYSC_ESC] = 0;
     keystatus[KEYSC_ENTER] = 0;
@@ -3126,11 +3104,6 @@ static int32_t editorGetTile(int32_t idInitialTile)
 
     return idSelectedTile;
 }
-
-// Dir = 0 (zoom out) or 1 (zoom in)
-//void OnZoomInOut( int32_t *pZoom, int32_t Dir /*0*/ )
-//{
-//}
 
 static int32_t OnSaveTileGroup(void)
 {
@@ -3142,7 +3115,7 @@ static int32_t OnSaveTileGroup(void)
         TMPERRMSG_RETURN("Cannot save tile group: maximum number of groups (%d) exceeded.", MAX_TILE_GROUPS);
 
     for (i=0; i<MAXUSERTILES; i++)
-        n += !!(tilemarked[i>>3]&pow2char[i&7]);
+        n += !!bitmap_test(tilemarked, i);
 
     if (n==0)
         TMPERRMSG_RETURN("Cannot save tile group: no tiles marked.");
@@ -3183,7 +3156,7 @@ static int32_t OnSaveTileGroup(void)
             TMPERRMSG_RETURN("Could not seek to end of file `%s'.", default_tiles_cfg);
 
 #define TTAB "\t"
-#define TBITCHK(i) ((i)<MAXUSERTILES && (tilemarked[(i)>>3]&pow2char[(i)&7]))
+#define TBITCHK(i) ((i) < MAXUSERTILES && bitmap_test(tilemarked, (i)))
         Bfprintf(fp, OURNEWL);
         Bfprintf(fp, "tilegroup \"%s\"" OURNEWL"{" OURNEWL, name);
         Bfprintf(fp, TTAB "hotkey \"%c\"" OURNEWL OURNEWL, hotkey);
@@ -3204,7 +3177,7 @@ static int32_t OnSaveTileGroup(void)
                 for (k=lasti; k<i; k++)
                 {
                     s_TileGroups[tile_groups].pIds[j++] = k;
-                    tilemarked[k>>3] &= ~pow2char[k&7];
+                    bitmap_clear(tilemarked, k);
                 }
 
                 lasti = -1;
@@ -3223,7 +3196,7 @@ static int32_t OnSaveTileGroup(void)
             for (k=lasti; k<MAXUSERTILES; k++)
             {
                 s_TileGroups[tile_groups].pIds[j++] = k;
-                tilemarked[k>>3] &= ~pow2char[k&7];
+                bitmap_clear(tilemarked, k);
             }
             Bfprintf(fp, TTAB "tilerange %d %d" OURNEWL, lasti, MAXUSERTILES-1);
         }
@@ -3231,7 +3204,7 @@ static int32_t OnSaveTileGroup(void)
 
         k = 0;
         for (i=0; i<MAXUSERTILES; i++)
-            if (tilemarked[i>>3]&pow2char[i&7])
+            if (bitmap_test(tilemarked, i))
             {
                 k = 1;
                 break;
@@ -3286,24 +3259,21 @@ static int32_t OnSaveTileGroup(void)
     return 0;
 }
 
-
 static int32_t OnGotoTile(int32_t tileNum)
 {
     //Automatically press 'V'
-    tileNum = SelectAllTiles(tileNum);
+    SelectAllTiles(tileNum);
 
     return getnumber256("Goto tile: ", 0, MAXUSERTILES-1, 0+2+16);
 }
 
-
 static int32_t LoadTileSet(const int32_t idCurrentTile, const int32_t *pIds, const int32_t nIds)
 {
     int32_t iNewTile = 0;
-    int32_t i;
 
     localartlookupnum = nIds;
 
-    for (i = 0; i < localartlookupnum; i++)
+    for (int32_t i = 0; i < localartlookupnum; i++)
     {
         localartlookup[i] = pIds[i];
         // REM : Could we still utilise localartfreq[] to mark
@@ -3319,10 +3289,6 @@ static int32_t LoadTileSet(const int32_t idCurrentTile, const int32_t *pIds, con
 
 static int32_t OnSelectTile(int32_t tileNum)
 {
-    int32_t bDone = 0;
-    int32_t i;
-    char ch;
-
     if (tile_groups <= 0)
     {
         TMPERRMSG_PRINT("No tile groups loaded. Check for existence of `%s'.", default_tiles_cfg);
@@ -3341,7 +3307,7 @@ static int32_t OnSelectTile(int32_t tileNum)
     //	Await appropriate selection keypress.
     //
 
-    bDone = 0;
+    bool bDone = false;
 
     while (keystatus[KEYSC_ESC] == 0 && !bDone)
     {
@@ -3355,7 +3321,7 @@ static int32_t OnSelectTile(int32_t tileNum)
         //
         int32_t j = 0;
 
-        for (i = 0; i < tile_groups; i++)
+        for (int32_t i = 0; i < tile_groups; i++)
         {
             if (s_TileGroups[i].szText != NULL)
             {
@@ -3371,15 +3337,15 @@ static int32_t OnSelectTile(int32_t tileNum)
         }
         videoShowFrame(1);
 
-        ch = keyGetChar();
+        char const ch = keyGetChar();
 
-        for (i = 0; i < tile_groups; i++)
+        for (int32_t i = 0; i < tile_groups; i++)
         {
             if (s_TileGroups[i].pIds != NULL && s_TileGroups[i].key1)
                 if (ch == s_TileGroups[i].key1 || ch == s_TileGroups[i].key2)
                 {
                     tileNum = LoadTileSet(tileNum, s_TileGroups[i].pIds, s_TileGroups[i].nIds);
-                    bDone = 1;
+                    bDone = true;
                 }
         }
     }
@@ -3451,7 +3417,7 @@ static void tilescreen_drawbox(int32_t iTopLeft, int32_t iSelected, int32_t nXTi
                                int32_t TileDim, int32_t offset,
                                int32_t tileNum, int32_t idTile)
 {
-    int32_t marked = (IsValidTile(idTile) && tilemarked[idTile>>3]&pow2char[idTile&7]);
+    int32_t marked = (IsValidTile(idTile) && bitmap_test(tilemarked, idTile));
 
     //
     // Draw white box around currently selected tile or marked tile
@@ -3547,19 +3513,15 @@ static void tilescreen_drawrest(int32_t iSelected, int32_t showmsg)
 static int32_t DrawTiles(int32_t iTopLeft, int32_t iSelected, int32_t nXTiles, int32_t nYTiles,
                          int32_t TileDim, int32_t offset, int32_t showmsg)
 {
-    int32_t XTile, YTile;
-    int32_t tileNum, idTile;
-    int32_t i, x=0, y=0;
-    const char *pRawPixels;
-    char szT[128];
+    static uint8_t loadedhitile[bitmap_size(MAXTILES)];
+
 #ifdef USE_OPENGL
-    int32_t lazyselector = !osdvisible && g_lazy_tileselector && usehightile;
-    int32_t usehitile;
+    int32_t const lazyselector = !osdvisible && g_lazy_tileselector && usehightile;
 #else
-    int32_t lazyselector = g_lazy_tileselector;
+    int32_t const lazyselector = g_lazy_tileselector;
 #endif
-    int32_t runi=0;
-    static uint8_t loadedhitile[(MAXTILES+7)>>3];
+    int32_t x = 0, y = 0;
+    int32_t runi = 0;
 
 #ifdef USE_OPENGL
     polymostSet2dView();
@@ -3575,31 +3537,30 @@ static int32_t DrawTiles(int32_t iTopLeft, int32_t iSelected, int32_t nXTiles, i
     videoBeginDrawing();
 
 restart:
-    for (YTile = 0-(offset>0); YTile < nYTiles+(offset<0)+1; YTile++)
+    for (int32_t YTile = 0 - (offset > 0); YTile < nYTiles + (offset < 0) + 1; YTile++)
     {
-        for (XTile = 0; XTile < nXTiles; XTile++)
+        for (int32_t XTile = 0; XTile < nXTiles; XTile++)
         {
-            tileNum = iTopLeft + XTile + (YTile * nXTiles);
+            int32_t const tileNum = iTopLeft + XTile + (YTile * nXTiles);
 
             if (tileNum < 0 || tileNum >= localartlookupnum)
                 continue;
 #ifdef USE_OPENGL
-            usehitile = (runi || !lazyselector);
+            bool usehitile = (runi || !lazyselector);
 #endif
+            int32_t const idTile = localartlookup[tileNum];
 
-            idTile = localartlookup[ tileNum ];
-            if (loadedhitile[idTile>>3]&pow2char[idTile&7])
+            if (bitmap_test(loadedhitile, idTile))
             {
                 if (runi==1)
                     continue;
-
 #ifdef USE_OPENGL
-                usehitile = 1;
+                usehitile = true;
 #endif
             }
 
             // Get pointer to tile's raw pixel data
-            pRawPixels = GetTilePixels(idTile);
+            const char *pRawPixels = GetTilePixels(idTile);
 
             // don't draw rotated tiles generated near MAXTILES
             if (EDUKE32_PREDICT_FALSE(rottile[idTile].owner != -1))
@@ -3608,39 +3569,37 @@ restart:
             if (pRawPixels != NULL)
             {
                 x = XTile * TileDim;
-                y = YTile * TileDim+offset;
+                y = YTile * TileDim + offset;
 
 #ifdef USE_OPENGL
-                if (polymost_drawtilescreen(x, y, idTile, TileDim, s_TileZoom,
-                                            usehitile, loadedhitile))
+                if (polymost_drawtilescreen(x, y, idTile, TileDim, s_TileZoom, usehitile, loadedhitile))
 #endif
                     classic_drawtilescreen(x, y, idTile, TileDim, pRawPixels);
-
             }
 
             tilescreen_drawbox(iTopLeft, iSelected, nXTiles, TileDim, offset, tileNum, idTile);
 
             if (localartfreq[tileNum] != 0 && y >= 0 && y <= ydim-20)
             {
+                char szT[128];
                 Bsprintf(szT, "%d", localartfreq[tileNum]);
                 printext256(x, y, whitecol, -1, szT, 1);
             }
 
-            if (runi==1 && lazyselector)
+            if (runi == 1 && lazyselector)
             {
-                int32_t k;
-
                 if (handleevents())
                     quitevent=0;
 
                 tilescreen_drawrest(iSelected, showmsg);
 
-                k = (g_mousePos.x || g_mousePos.y || g_mouseBits);
+                bool k = (g_mousePos.x || g_mousePos.y || g_mouseBits);
+
                 if (!k)
-                    for (i=0; i<(signed)ARRAY_SIZE(keystatus); i++)
+                    for (int32_t i = 0; i < (signed)ARRAY_SIZE(keystatus); i++)
                         if (keystatus[i])
                         {
-                            k = 1;
+                            k = true;
                             break;
                         }
                 if (k)
@@ -3665,7 +3624,7 @@ restart:
 
     if (videoGetRenderMode() >= REND_POLYMOST && in3dmode() && lazyselector)
     {
-        if (runi==0)
+        if (runi == 0)
         {
             videoEndDrawing();
             videoShowFrame(1);
@@ -4228,7 +4187,7 @@ static void mouseaction_movesprites(int32_t *sumxvect, int32_t *sumyvect, int32_
         dayvect = yvect;
     }
 
-    if (highlightcnt<=0 || (show2dsprite[searchwall>>3] & pow2char[searchwall&7])==0)
+    if (highlightcnt <= 0 || !bitmap_test(show2dsprite, searchwall))
     {
         clipmove(&tvec, &tsect, daxvect,dayvect, sp->clipdist,64<<4,64<<4, spnoclip?1:CLIPMASK0);
         setsprite(searchwall, &tvec);
@@ -4275,17 +4234,17 @@ static int32_t addtobyte(int8_t *byte, int32_t num)
 
 static void toggle_sprite_alignment(int32_t spritenum)
 {
-    static const char *aligntype[4] = { "view", "wall", "floor", "???" };
+    static const char *aligntype[4] = { "view", "wall", "floor", "sloped" };
 
     int32_t i = sprite[spritenum].cstat;
 
-    if ((i&48) < 32)
-        i += 16;
+    if ((i & CSTAT_SPRITE_ALIGNMENT) < CSTAT_SPRITE_ALIGNMENT_FLOOR)
+        i += CSTAT_SPRITE_ALIGNMENT_WALL;
     else
-        i &= ~48;
+        i &= ~CSTAT_SPRITE_ALIGNMENT;
     sprite[spritenum].cstat = i;
 
-    message("Sprite %d now %s aligned", spritenum, aligntype[(i&48)/16]);
+    message("Sprite %d now %s aligned", spritenum, aligntype[(i & CSTAT_SPRITE_ALIGNMENT) / CSTAT_SPRITE_ALIGNMENT_WALL]);
     asksave = 1;
 }
 
@@ -4328,11 +4287,11 @@ static int64_t lldotv2(const vec2_t *v1, const vec2_t *v2)
 ////////// KEY PRESS HANDLER IN 3D MODE //////////
 static void Keys3d(void)
 {
-    int32_t i = 0, changedir,tsign; // ,count,nexti
-    int32_t j, k, tempint = 0, hiz, loz;
+    int32_t i = 0, changedir,tsign;
+    int32_t j, k, hiz, loz;
     int32_t hihit, lohit;
-    char smooshyalign=0, repeatpanalign=0; //, buffer[80];
-    int16_t startwall, endwall, dasector; //, statnum=0;
+    char smooshyalign=0, repeatpanalign=0;
+    int16_t startwall, endwall, dasector;
     char tempbuf[128];
 
     /* start Mapster32 */
@@ -4586,14 +4545,22 @@ static void Keys3d(void)
         message("Grid locking %s", gridlock ? "on" : "off");
     }
 
+    if (eitherCTRL && eitherALT && PRESSED_KEYSC(W))
+    {
+        spriteinsertmode = !spriteinsertmode;
+        message("Sprite insertion clips non-hitscan sprites: %s", ONOFF(spriteinsertmode));
+    }
+
     if (PRESSED_KEYSC(V))  //V
     {
         if (ASSERT_AIMING)
         {
-            int32_t oldtile = AIMED_SELOVR_PICNUM;
+            int32_t const oldtile = AIMED_SELOVR_PICNUM;
 
             globalpal = AIMED_CF_SEL(pal);
-            tempint = editorGetTile(oldtile);
+
+            int32_t const tempint = editorGetTile(oldtile);
+
             AIMED_SELOVR_PICNUM = tempint;
             AIMED_CF_SEL(pal) = globalpal;
 
@@ -4721,7 +4688,7 @@ static void Keys3d(void)
             message("Sprite %d deleted",searchwall);
             if (AmbienceToggle)
             {
-                clearbit(g_ambiencePlaying, searchwall);
+                bitmap_clear(g_ambiencePlaying, searchwall);
                 S_StopEnvSound(sprite[searchwall].lotag, searchwall);
             }
             asksave = 1;
@@ -4919,7 +4886,7 @@ static void Keys3d(void)
         {
             i = sprite[searchwall].cstat;
             i ^= 64;
-            if ((i&48) == 32)
+            if ((i & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FLOOR)
             {
                 i &= ~8;
                 if ((i&64) && pos.z>sprite[searchwall].z)
@@ -5099,7 +5066,7 @@ static void Keys3d(void)
                 {
                     k=eitherSHIFT?1:16;
 
-                    if (highlightsectorcnt > 0 && (hlsectorbitmap[searchsector>>3]&pow2char[searchsector&7]))
+                    if (highlightsectorcnt > 0 && bitmap_test(hlsectorbitmap, searchsector))
                     {
                         while (k-- > 0)
                         {
@@ -5141,14 +5108,14 @@ static void Keys3d(void)
             {
                 int32_t clamped=0;
 
-                k = (highlightsectorcnt>0 && (hlsectorbitmap[searchsector>>3]&pow2char[searchsector&7]));
+                k = (highlightsectorcnt>0 && bitmap_test(hlsectorbitmap, searchsector));
                 tsign *= (1+3*eitherCTRL);
 
                 if (k == 0)
                 {
                     if (ASSERT_AIMING)
                     {
-                        if (!eitherSHIFT && AIMING_AT_SPRITE && (show2dsprite[searchwall>>3]&pow2char[searchwall&7]))
+                        if (!eitherSHIFT && AIMING_AT_SPRITE && bitmap_test(show2dsprite, searchwall))
                         {
                             for (i=0; i<highlightcnt; i++)
                                 if (highlight[i]&16384)
@@ -5293,7 +5260,7 @@ static void Keys3d(void)
             else if (AIMING_AT_SPRITE)
             {
                 i = sprite[searchwall].cstat;
-                if (((i&48) == 32) && ((i&64) == 0))
+                if (((i & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FLOOR) && ((i&64) == 0))
                 {
                     sprite[searchwall].cstat &= ~0xc;
                     sprite[searchwall].cstat |= ((i&4)^4);
@@ -5352,7 +5319,7 @@ static void Keys3d(void)
         k = 0;
         if (highlightsectorcnt > 0 && searchsector>=0 && searchsector<numsectors)
         {
-            if (hlsectorbitmap[searchsector>>3]&pow2char[searchsector&7])
+            if (bitmap_test(hlsectorbitmap, searchsector))
                 k = highlightsectorcnt;
         }
 
@@ -5419,10 +5386,10 @@ static void Keys3d(void)
                     SECTORFLD(sect,z, moveFloors) += dz;
 #ifdef YAX_ENABLE
                     bunchnum = yax_getbunch(sect, moveFloors);
-                    if (bunchnum >= 0 && !(havebunch[bunchnum>>3]&pow2char[bunchnum&7]))
+                    if (bunchnum >= 0 && !bitmap_test(havebunch, bunchnum))
                     {
                         maxbunchnum = max(maxbunchnum, bunchnum);
-                        havebunch[bunchnum>>3] |= pow2char[bunchnum&7];
+                        bitmap_set(havebunch, bunchnum);
                         tempzar[bunchnum] = &SECTORFLD(sect,z, moveFloors);
                     }
 #endif
@@ -5436,9 +5403,9 @@ static void Keys3d(void)
                 for (i=0; i<numsectors; i++)
                 {
                     yax_getbunches(i, &cb, &fb);
-                    if (cb >= 0 && (havebunch[cb>>3]&pow2char[cb&7]))
+                    if (cb >= 0 && bitmap_test(havebunch, cb))
                         sector[i].ceilingz = *tempzar[cb];
-                    if (fb >= 0 && (havebunch[fb>>3]&pow2char[fb&7]))
+                    if (fb >= 0 && bitmap_test(havebunch, fb))
                         sector[i].floorz = *tempzar[fb];
                 }
             }
@@ -5467,7 +5434,7 @@ static void Keys3d(void)
             }
             else
             {
-                k = !!(show2dsprite[searchwall>>3]&pow2char[searchwall&7]);
+                k = !!bitmap_test(show2dsprite, searchwall);
 
                 tsign *= (updownunits << ((eitherCTRL && mouseaction)*3));
 
@@ -5792,9 +5759,9 @@ static void Keys3d(void)
                 sprite[searchwall].lotag =
                     _getnumber256("Sprite lotag: ", sprite[searchwall].lotag, BTAG_MAX, 0+j, &MusicAndSFXTagText);
 
-                if (testbit(g_ambiencePlaying, searchwall) && sprite[searchwall].lotag != oldtag)
+                if (bitmap_test(g_ambiencePlaying, searchwall) && sprite[searchwall].lotag != oldtag)
                 {
-                    clearbit(g_ambiencePlaying, searchwall);
+                    bitmap_clear(g_ambiencePlaying, searchwall);
                     S_StopEnvSound(oldtag, searchwall);
                 }
             }
@@ -6080,8 +6047,8 @@ static void Keys3d(void)
             }
             else if (AIMING_AT_SPRITE)
             {
-                auto const cstat = sprite[searchwall].cstat & CSTAT_SPRITE_ALIGNMENT_MASK;
-                if (cstat == CSTAT_SPRITE_ALIGNMENT_FLOOR || cstat == CSTAT_SPRITE_ALIGNMENT_SLOPE)
+                auto const cstat = sprite[searchwall].cstat;
+                if (cstat & CSTAT_SPRITE_ALIGNMENT_FLOOR)
                 {
                     int32_t oldslope = spriteGetSlope(searchwall);
                     int32_t newslope = clamp(oldslope + tsign*i, -BHEINUM_MAX, BHEINUM_MAX);
@@ -6290,8 +6257,8 @@ static void Keys3d(void)
                         changedir *= -1;
                     while (updownunits--)
                         sprite[searchwall].xrepeat = changechar(sprite[searchwall].xrepeat, changedir, smooshyalign, 1);
-                    if (sprite[searchwall].xrepeat < 4)
-                        sprite[searchwall].xrepeat = 4;
+                    if (sprite[searchwall].xrepeat < 1)
+                        sprite[searchwall].xrepeat = 1;
                     silentmessage("Sprite %d repeat: %d, %d", searchwall,
                                   TrackerCast(sprite[searchwall].xrepeat),
                                   TrackerCast(sprite[searchwall].yrepeat));
@@ -6397,8 +6364,8 @@ static void Keys3d(void)
                     sumxvect = sumyvect = 0;
                     while (updownunits--)
                         sprite[searchwall].yrepeat = changechar(sprite[searchwall].yrepeat, changedir, smooshyalign, 1);
-                    if (sprite[searchwall].yrepeat < 4)
-                        sprite[searchwall].yrepeat = 4;
+                    if (sprite[searchwall].yrepeat < 1)
+                        sprite[searchwall].yrepeat = 1;
                     silentmessage("Sprite %d repeat: %d, %d", searchwall,
                                   TrackerCast(sprite[searchwall].xrepeat),
                                   TrackerCast(sprite[searchwall].yrepeat));
@@ -6413,21 +6380,6 @@ static void Keys3d(void)
         repeatcounty = 0;
 
     ////////////////////
-
-    if (PRESSED_KEYSC(F11))  //F11 - brightness
-    {
-        static int16_t brightness = -1;
-
-        if (brightness==-1)
-            brightness = ((int16_t)((g_videoGamma-1.0)*10.0))&15;
-
-        brightness = brightness + (1-2*eitherSHIFT);
-        brightness &= 15;
-
-        g_videoGamma = 1.0 + ((float)brightness / 10.0);
-        videoSetPalette(brightness, BASEPAL, 0);
-        message("Brightness: %d/16", brightness+1);
-    }
 
     if (PRESSED_KEYSC(TAB))  //TAB
     {
@@ -6744,7 +6696,7 @@ static void Keys3d(void)
             static const char *addnstr[4] = {"", "+stat+panning", "+stat", "+stat + panning (some)"};
 
             static int16_t sectlist[MAXSECTORS];
-            static uint8_t sectbitmap[(MAXSECTORS+7)>>3];
+            static uint8_t sectbitmap[bitmap_size(MAXSECTORS)];
             int16_t sectcnt, sectnum;
 
             i = searchsector;
@@ -7311,7 +7263,7 @@ static void Keys2d(void)
 
 ///__bigcomment__
 
-    if ((i=tcursectornum)>=0 && g_fillCurSector && (hlsectorbitmap[i>>3]&pow2char[i&7])==0)
+    if ((i=tcursectornum)>=0 && g_fillCurSector && !bitmap_test(hlsectorbitmap, i))
     {
         int32_t col = editorcolors[4];
 #ifdef YAX_ENABLE
@@ -7395,7 +7347,7 @@ static void Keys2d(void)
         if (eitherALT)
         {
             showinnergray = !showinnergray;
-            printmessage16("Display grayed out walls: %s", ONOFF(showinnergray));
+            printmessage16("Display grayed-out walls: %s", ONOFF(showinnergray));
         }
         else
         {
@@ -7409,31 +7361,39 @@ static void Keys2d(void)
     // Ctrl-R set editor z range to hightlightsectors' c/f bounds
     if (eitherCTRL && PRESSED_KEYSC(R))
     {
-        if (highlightsectorcnt <= 0)
+        if (eitherALT)
         {
-            editorzrange[0] = INT32_MIN;
-            editorzrange[1] = INT32_MAX;
-            printmessage16("Reset Z range");
+            showgraysectors = !showgraysectors;
+            printmessage16("Display grayed-out sectors: %s", ONOFF(showgraysectors));
         }
         else
         {
-            int32_t damin=INT32_MAX, damax=INT32_MIN;
-
-            for (i=0; i<highlightsectorcnt; i++)
+            if (highlightsectorcnt <= 0)
             {
-                damin = min(damin, TrackerCast(sector[highlightsector[i]].ceilingz));
-                damax = max(damax, TrackerCast(sector[highlightsector[i]].floorz));
+                editorzrange[0] = INT32_MIN;
+                editorzrange[1] = INT32_MAX;
+                printmessage16("Reset Z range");
             }
-
-            if (damin < damax)
+            else
             {
-                editorzrange[0] = damin;
-                editorzrange[1] = damax;
-                printmessage16("Set Z range to highlighted sector bounds (%d..%d)",
-                               editorzrange[0], editorzrange[1]);
+                int32_t damin=INT32_MAX, damax=INT32_MIN;
+
+                for (i=0; i<highlightsectorcnt; i++)
+                {
+                    damin = min(damin, TrackerCast(sector[highlightsector[i]].ceilingz));
+                    damax = max(damax, TrackerCast(sector[highlightsector[i]].floorz));
+                }
+
+                if (damin < damax)
+                {
+                    editorzrange[0] = damin;
+                    editorzrange[1] = damax;
+                    printmessage16("Set Z range to highlighted sector bounds (%d..%d)",
+                                   editorzrange[0], editorzrange[1]);
+                }
             }
+            yax_updategrays(pos.z);
         }
-        yax_updategrays(pos.z);
     }
 
     if (PRESSED_KEYSC(T))  // T (tag)
@@ -7612,10 +7572,10 @@ static void Keys2d(void)
             {
                 changedir = 1-(j&2);
 
-                if ((ppointhighlight&0xc000) == 16384 && (sprite[cursprite].cstat & 48))
+                if ((ppointhighlight&0xc000) == 16384 && (sprite[cursprite].cstat & CSTAT_SPRITE_ALIGNMENT))
                 {
                     uint8_t *repeat = (k==0) ? &sprite[cursprite].xrepeat : &sprite[cursprite].yrepeat;
-                    *repeat = max<uint8_t>(4, changechar(*repeat, changedir, smooshy, 1));
+                    *repeat = max<uint8_t>(1, changechar(*repeat, changedir, smooshy, 1));
                     silentmessage("Sprite %d repeat: %d, %d", cursprite,
                         TrackerCast(sprite[cursprite].xrepeat),
                         TrackerCast(sprite[cursprite].yrepeat));
@@ -8063,16 +8023,10 @@ static void G_CheckCommandLine(int32_t argc, char const * const * argv)
         return;
     else
     {
-        tempbuf[0] = 0;
-
-        Bstrcpy(tempbuf, "Application parameters: ");
-
-        while (i < argc)
-        {
-            Bstrcat(tempbuf, argv[i++]);
-            Bstrcat(tempbuf, " ");
-        }
-
+        size_t constexpr size = ARRAY_SIZE(tempbuf);
+        size_t bytesWritten = Bsnprintf(tempbuf, size, "Application parameters:");
+        for (i = 1; i < argc; ++i)
+            bytesWritten += Bsnprintf(tempbuf + bytesWritten, size - bytesWritten, " %s", argv[i]);
         LOG_F(INFO, "%s", tempbuf);
     }
 
@@ -9305,7 +9259,7 @@ static int32_t registerosdcommands(void)
 #ifdef DEBUGGINGAIDS
     OSD_RegisterFunction("disasm", "disasm [s|e] <state or event number>", osdcmd_disasm);
 #endif
-    
+
     static osdcvardata_t cvars_editor[] =
     {
         { "cameraheight", "adjust editor camera height", (void*)&kensplayerheight, CVAR_INT, 1, 255 },
@@ -9369,10 +9323,11 @@ static void parsegroupfiles_include(const char *fn, scriptfile *script, const ch
     if (!included)
     {
         if (!Bstrcasecmp(cmdtokptr,"null"))
-            initprintf("Warning: Failed including %s as module\n", fn);
+            LOG_F(WARNING, "warning: failed including %s as module", fn);
         else
-            initprintf("Warning: Failed including %s on line %s:%d\n",
-                       fn, script->filename,scriptfile_getlinum(script,cmdtokptr));
+            LOG_F(WARNING, "%s:%d: warning: failed including %s",
+                           script->filename, scriptfile_getlinum(script, cmdtokptr),
+                           fn);
     }
     else
     {
@@ -9464,8 +9419,9 @@ static int32_t parsegroupfiles(scriptfile *script)
             if (scriptfile_getsymbol(script, &number)) break;
 
             if (EDUKE32_PREDICT_FALSE(scriptfile_addsymbolvalue(name, number) < 0))
-                initprintf("Warning: Symbol %s was NOT redefined to %d on line %s:%d\n",
-                           name, number, script->filename, scriptfile_getlinum(script, cmdtokptr));
+                LOG_F(WARNING, "%s:%d: warning: symbol %s was NOT redefined to %d",
+                               script->filename, scriptfile_getlinum(script, cmdtokptr),
+                               name, number);
             break;
         }
         case T_NOAUTOLOAD:
@@ -9523,7 +9479,8 @@ static int32_t parsegroupfiles(scriptfile *script)
 
             if (soundNum==-1)
             {
-                initprintf("Error: missing ID for sound definition near line %s:%d\n", script->filename, scriptfile_getlinum(script, tokenPtr));
+                LOG_F(ERROR, "%s:%d: error: missing ID for sound definition",
+                             script->filename, scriptfile_getlinum(script, tokenPtr));
                 break;
             }
 
@@ -9531,7 +9488,8 @@ static int32_t parsegroupfiles(scriptfile *script)
                 break;
 
             if (S_DefineSound(soundNum, fileName, definedName, minpitch, maxpitch, priority, type, distance, volume) == -1)
-                initprintf("Error: invalid sound ID on line %s:%d\n", script->filename, scriptfile_getlinum(script, tokenPtr));
+                LOG_F(ERROR, "%s:%d: error: invalid sound ID",
+                             script->filename, scriptfile_getlinum(script, tokenPtr));
         }
         break;
         case T_GLOBALGAMEFLAGS:
@@ -9613,8 +9571,9 @@ int32_t parsetilegroups(scriptfile *script)
                 included = scriptfile_fromfile(fn);
                 if (!included)
                 {
-                    initprintf("Warning: Failed including %s on line %s:%d\n",
-                               fn, script->filename,scriptfile_getlinum(script,cmdtokptr));
+                    LOG_F(WARNING, "%s:%d: warning: failed including %s",
+                                   script->filename, scriptfile_getlinum(script,cmdtokptr),
+                                   fn);
                 }
                 else
                 {
@@ -9632,8 +9591,9 @@ int32_t parsetilegroups(scriptfile *script)
             if (scriptfile_getstring(script,&name)) break;
             if (scriptfile_getsymbol(script,&number)) break;
             if (scriptfile_addsymbolvalue(name,number) < 0)
-                initprintf("Warning: Symbol %s was NOT redefined to %d on line %s:%d\n",
-                           name,number,script->filename,scriptfile_getlinum(script,cmdtokptr));
+                LOG_F(WARNING, "%s:%d: warning: symbol %s was NOT redefined to %d",
+                               script->filename, scriptfile_getlinum(script,cmdtokptr),
+                               name, number);
             break;
         }
         case T_TILEGROUP:
@@ -9933,10 +9893,11 @@ static void parseconsounds_include(const char *fn, scriptfile *script, const cha
     if (!included)
     {
         if (!Bstrcasecmp(cmdtokptr,"null"))
-            initprintf("Warning: Failed including %s as module\n", fn);
+            LOG_F(WARNING, "warning: failed including %s as module", fn);
         else
-            initprintf("Warning: Failed including %s on line %s:%d\n",
-                       fn, script->filename,scriptfile_getlinum(script,cmdtokptr));
+            LOG_F(WARNING, "%s:%d: warning: failed including %s",
+                           script->filename,scriptfile_getlinum(script,cmdtokptr),
+                           fn);
     }
     else
     {
@@ -9955,7 +9916,6 @@ static int32_t parseconsounds(scriptfile *script)
 {
     int32_t tokn;
     char *cmdtokptr;
-    int32_t num_invalidsounds=0;
 
     tokenlist cstokens[] =
     {
@@ -9995,8 +9955,9 @@ static int32_t parseconsounds(scriptfile *script)
             if (scriptfile_getstring(script,&name)) break;
             if (scriptfile_getsymbol(script,&number)) break;
             if (scriptfile_addsymbolvalue(name,number) < 0)
-                initprintf("Warning: Symbol %s was NOT redefined to %d on line %s:%d\n",
-                           name,number,script->filename,scriptfile_getlinum(script,cmdtokptr));
+                LOG_F(WARNING, "%s:%d: warning: symbol %s was NOT redefined to %d",
+                                script->filename, scriptfile_getlinum(script,cmdtokptr),
+                                name, number);
             break;
         }
         case T_GAMESTARTUP:
@@ -10017,24 +9978,21 @@ static int32_t parseconsounds(scriptfile *script)
 
             if (sndnum < 0 || sndnum >= MAXSOUNDS)
             {
-                initprintf("Warning: invalid sound definition %s (sound number < 0 or >= MAXSOUNDS) on line %s:%d\n",
-                           definedname, script->filename,scriptfile_getlinum(script,cmdtokptr));
-                num_invalidsounds++;
+                LOG_F(WARNING, "%s:%d: warning: invalid sound definition %s (sound number < 0 or >= MAXSOUNDS)",
+                               script->filename,scriptfile_getlinum(script,cmdtokptr),
+                               definedname);
                 break;
             }
 
             if (scriptfile_getstring(script, &filename))
-            {
-                num_invalidsounds++;
                 break;
-            }
 
             slen = Bstrlen(filename);
             if (slen >= BMAX_PATH)
             {
-                initprintf("Warning: invalid sound definition %s (filename too long) on line %s:%d\n",
-                           definedname, script->filename,scriptfile_getlinum(script,cmdtokptr));
-                num_invalidsounds++;
+                LOG_F(WARNING, "%s:%d: warning: invalid sound definition %s (filename too long)",
+                               script->filename,scriptfile_getlinum(script,cmdtokptr),
+                               definedname);
                 break;
             }
 
@@ -10047,12 +10005,12 @@ static int32_t parseconsounds(scriptfile *script)
             if (0)
             {
 BAD:
-                num_invalidsounds++;
                 break;
             }
 
             if (S_DefineSound(sndnum, filename, definedname, ps, pe, pr, m, vo, volume) == -1)
-                initprintf("Error: invalid sound ID on line %s:%d\n", script->filename, scriptfile_getlinum(script, cmdtokptr));
+                LOG_F(ERROR, "%s:%d: error: invalid sound ID",
+                             script->filename, scriptfile_getlinum(script, cmdtokptr));
 
             break;
         }
@@ -10071,12 +10029,12 @@ static int32_t loadconsounds(const char *fn)
     scriptfile *script;
     int32_t ret;
 
-    initprintf("Loading sounds from \"%s\"\n",fn);
+    LOG_F(INFO, "Loading sounds from \"%s\"",fn);
 
     script = scriptfile_fromfile(fn);
     if (!script)
     {
-        initprintf("Error loading sounds: file \"%s\" not found.\n", fn);
+        LOG_F(ERROR, "Error loading sounds: file \"%s\" not found.", fn);
         return -1;
     }
     ret = parseconsounds(script);
@@ -10089,14 +10047,14 @@ static int32_t loadconsounds(const char *fn)
     g_scriptModules.clear();
 
     if (ret < 0)
-        initprintf("There was an error parsing \"%s\".\n", fn);
+        LOG_F(ERROR, "There was an error parsing \"%s\".", fn);
     else if (ret == 0)
-        initprintf("\"%s\" doesn't contain sound definitions. No sounds loaded.\n", fn);
+        LOG_F(INFO, "\"%s\" doesn't contain sound definitions. No sounds loaded.", fn);
     else
-        initprintf("Loaded %d sound definitions.\n", ret);
+        LOG_F(INFO, "Loaded %d sound definitions.", ret);
 
     if (g_visibility != 512)
-        initprintf("Global visibility: %d\n", g_visibility);
+        LOG_F(INFO, "Global visibility: %d", g_visibility);
 
     scriptfile_close(script);
     scriptfile_clearsymbols();
@@ -10121,7 +10079,7 @@ static void m32script_interrupt_handler(int signo)
 
 static void M32_HandleMemErr(int32_t line, const char *file, const char *func)
 {
-    initprintf("Out of memory in %s:%d (%s)\n", file, line, func);
+    LOG_F(ERROR, "Out of memory in %s:%d (%s)", file, line, func);
     osdcmd_quit(NULL);
 }
 
@@ -10155,7 +10113,8 @@ int32_t ExtInit(void)
     registerosdcommands();
 
     {
-        char *ptr = Xstrdup(setupfilename), *p = strtok(ptr,".");
+        char *dummy = NULL;
+        char *ptr = Xstrdup(setupfilename), *p = Bstrtoken(ptr, ".", &dummy, 1);
         if (!Bstrcmp(setupfilename, SETUPFILENAME))
             Bsprintf(tempbuf, "m32_settings.cfg");
         else Bsprintf(tempbuf,"%s_m32_settings.cfg",p);
@@ -10186,7 +10145,7 @@ int32_t ExtPostStartupWindow(void)
 
     if (engineInit())
     {
-        initprintf("There was a problem initializing the engine.\n");
+        LOG_F(ERROR, "There was a problem initializing the engine: %s", engineerrstr);
         return -1;
     }
 
@@ -10276,7 +10235,7 @@ void ExtPreCheckKeys(void) // just before drawrooms
 
                     for (w = start_wall; w < end_wall; w++)
                     {
-                        if (!(wallflag[w>>3]&pow2char[w&7]))
+                        if (!bitmap_test(wallflag, w))
                         {
                             wallshades[w] = wall[w].shade;
                             wallpals[w] = wall[w].pal;
@@ -10284,7 +10243,7 @@ void ExtPreCheckKeys(void) // just before drawrooms
                             wall[w].shade = sprite[i].shade;
                             wall[w].pal = sprite[i].pal;
 
-                            wallflag[w>>3] |= pow2char[w&7];
+                            bitmap_set(wallflag, w);
                         }
                         // removed: same thing with nextwalls
                     }
@@ -10428,14 +10387,14 @@ void ExtPreCheckKeys(void) // just before drawrooms
         {
             auto pSprite = (uspriteptr_t)&sprite[i];
 
-            if ((pSprite->cstat & 48) != 0 || pSprite->statnum == MAXSTATUS || (unsigned)pSprite->sectnum >= MAXSECTORS) continue;
+            if ((pSprite->cstat & CSTAT_SPRITE_ALIGNMENT) != CSTAT_SPRITE_ALIGNMENT_FACING || pSprite->statnum == MAXSTATUS || (unsigned)pSprite->sectnum >= MAXSECTORS) continue;
             if (bitmap_test(graysectbitmap, pSprite->sectnum)) continue;
 
             int daang = 0, flags = 0, shade = 0, frames = 0;
             int picnum = pSprite->picnum;
             int32_t xp1, yp1;
 
-            if ((sprite[i].cstat & 48) != 0 || sprite[i].statnum == MAXSTATUS) continue;
+            if ((sprite[i].cstat & CSTAT_SPRITE_ALIGNMENT) != CSTAT_SPRITE_ALIGNMENT_FACING || sprite[i].statnum == MAXSTATUS) continue;
 
             ii++;
 
@@ -10558,6 +10517,9 @@ void ExtPreCheckKeys(void) // just before drawrooms
     if (showambiencesounds)
     {
         for (ii=0; ii<numsectors; ii++)
+        {
+            YAX_SKIPSECTOR(ii);
+
             for (i=headspritesect[ii]; i>=0; i=nextspritesect[i])
             {
                 int32_t radius, col;
@@ -10586,6 +10548,7 @@ void ExtPreCheckKeys(void) // just before drawrooms
                 editorDraw2dCircle(halfxdim16+xp1, midydim16+yp1, radius, scalescreeny(16384), col);
                 drawlinepat = 0xffffffff;
             }
+        }
     }
 
     videoEndDrawing();  //}}}
@@ -10644,7 +10607,7 @@ void ExtAnalyzeSprites(int32_t ourx, int32_t oury, int32_t ourz, int32_t oura, i
             if (tspr->sectnum<0)
                 continue;
 
-            const int32_t wallaligned = (tspr->cstat & 16);
+            const int32_t wallaligned = (tspr->cstat & CSTAT_SPRITE_ALIGNMENT_WALL);
             const int32_t fpal = sector[tspr->sectnum].floorpal;
 
             // 1st rule
@@ -10822,6 +10785,21 @@ static void Keys2d3d(void)
         }
     }
 
+    if (PRESSED_KEYSC(F11))  //F11 - brightness
+    {
+        static int16_t brightness = -1;
+
+        if (brightness==-1)
+            brightness = ((int16_t)((g_videoGamma-1.0)*16.0))&15;
+
+        brightness = brightness + (1-2*eitherSHIFT);
+        brightness &= 15;
+
+        g_videoGamma = 1.0 + ((float)brightness / 16.0);
+        videoSetPalette(brightness, BASEPAL, 0);
+        message("Brightness: %d/16", brightness+1);
+    }
+
     if (keystatus[KEYSC_QUOTE] && PRESSED_KEYSC(A)) // 'A
     {
         if (in3dmode())
@@ -10996,11 +10974,11 @@ void ExtCheckKeys(void)
 
             for (w = start_wall; w < end_wall; w++)
             {
-                if (wallflag[w>>3]&pow2char[w&7])
+                if (bitmap_test(wallflag, w))
                 {
                     wall[w].shade = wallshades[w];
                     wall[w].pal = wallpals[w];
-                    wallflag[w>>3] &= ~pow2char[w&7];
+                    bitmap_clear(wallflag, w);
                 }
                 // removed: same thing with nextwalls
             }

@@ -62,8 +62,7 @@ int g_noSetup;
 // Comm variables
 //
 
-char CommPlayerName[32];
-int32_t NumberPlayers,CommPort,PortSpeed,IrqNumber,UartAddress;
+char CommPlayerName[MAXPLAYERNAMELENGTH];
 
 //
 // Sound variables
@@ -687,7 +686,6 @@ void CONFIG_SetupJoystick(void)
 int32_t CONFIG_ReadSetup(void)
 {
     int32_t dummy;
-    extern char PlayerNameArg[32];
 
     char waveformtrackname[MAXWAVEFORMTRACKLENGTH] = {0};
 
@@ -754,16 +752,12 @@ int32_t CONFIG_ReadSetup(void)
     //CONFIG_SetupMouse(scripthandle);
     //CONFIG_SetupJoystick(scripthandle);
 
-    if (PlayerNameArg[0] != '\0')
-    {
-        strcpy(CommPlayerName, PlayerNameArg);
-    }
     return 0;
 }
 
 static void CONFIG_WriteCvars()
 {
-    static const char filename[] = "voidsw_cvars.cfg";
+    static const char filename[] = APPBASENAME "_cvars.cfg";
 
     buildvfs_FILE fp = buildvfs_fopen_write(filename);
 
@@ -834,6 +828,8 @@ void CONFIG_WriteSetup(void)
     SCRIPT_PutNumber(scripthandle, "Controls","UseJoystick",ud_setup.UseJoystick,FALSE,FALSE);
     SCRIPT_PutNumber(scripthandle, "Controls","MouseSensitivity",gs.MouseSpeed,FALSE,FALSE);
 
+    SCRIPT_PutString(scripthandle, "Comm Setup", "PlayerName", CommPlayerName);
+
     WriteGameSetup(scripthandle);
 
     for (dummy=0; dummy<NUMGAMEFUNCTIONS; dummy++)
@@ -894,4 +890,3 @@ void CONFIG_WriteSetup(void)
 
     CONFIG_WriteCvars();
 }
-

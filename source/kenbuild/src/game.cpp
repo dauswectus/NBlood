@@ -16,12 +16,16 @@
 
 #include "renderlayer.h"
 
+#ifdef _WIN32
+# include "winbits.h"
+#endif
+
 #include "common_game.h"
 
-const char *AppProperName = "EKenBuild";
-const char *AppTechnicalName = "ekenbuild";
+const char *AppProperName = APPNAME;
+const char *AppTechnicalName = APPBASENAME;
 
-#define SETUPFILENAME "ekenbuild.cfg"
+#define SETUPFILENAME APPBASENAME ".cfg"
 char setupfilename[BMAX_PATH] = SETUPFILENAME;
 
 #define TIMERINTSPERSECOND 140 //280
@@ -330,9 +334,9 @@ static int animatevel[MAXANIMATES], animateacc[MAXANIMATES], animatecnt = 0;
         spr2->owner = owner2;                                               \
         spr2->lotag = lotag2; spr2->hitag = hitag2; spr2->extra = extra2;   \
         copybuf(&spr2->x,&osprite[newspriteindex2].x,3);                    \
-        show2dsprite[newspriteindex2>>3] &= ~(1<<(newspriteindex2&7));      \
-        if (show2dsector[sectnum2>>3]&(1<<(sectnum2&7)))                    \
-            show2dsprite[newspriteindex2>>3] |= (1<<(newspriteindex2&7));   \
+        bitmap_clear(show2dsprite, newspriteindex2);                        \
+        if (bitmap_test(show2dsector, sectnum2))                            \
+            bitmap_set(show2dsprite, newspriteindex2);                      \
         clearbufbyte(&spriteext[newspriteindex2], sizeof(spriteext_t), 0);  \
     }
 #else
@@ -353,9 +357,9 @@ static int animatevel[MAXANIMATES], animateacc[MAXANIMATES], animatecnt = 0;
         spr2->owner = owner2;                                               \
         spr2->lotag = lotag2; spr2->hitag = hitag2; spr2->extra = extra2;   \
         copybuf(&spr2->x,&osprite[newspriteindex2].x,3);                    \
-        show2dsprite[newspriteindex2>>3] &= ~(1<<(newspriteindex2&7));      \
-        if (show2dsector[sectnum2>>3]&(1<<(sectnum2&7)))                    \
-            show2dsprite[newspriteindex2>>3] |= (1<<(newspriteindex2&7));   \
+        bitmap_clear(show2dsprite, newspriteindex2);                        \
+        if (bitmap_test(show2dsector, sectnum2))                            \
+            bitmap_set(show2dsprite, newspriteindex2);                      \
     }
 #endif
 
@@ -365,7 +369,7 @@ int osdcmd_restartvid(const osdfuncparm_t *parm)
 
     videoResetMode();
     if (videoSetGameMode(fullscreen, xdim, ydim, bpp, upscalefactor))
-        buildputs("restartvid: Reset failed...\n");
+        LOG_F(ERROR, "restartvid: Reset failed...");
 
     return OSDCMD_OK;
 }
@@ -396,7 +400,7 @@ static int osdcmd_vidmode(const osdfuncparm_t *parm)
     }
 
     if (videoSetGameMode(newfullscreen, newx, newy, newbpp, upscalefactor))
-        buildputs("vidmode: Mode change failed!\n");
+        LOG_F(ERROR, "vidmode: Mode change failed!");
     screensize = xdim+1;
     return OSDCMD_OK;
 }
@@ -445,35 +449,78 @@ static void Ken_UninitAll(void)
 
 static void Ken_FatalEngineError(void)
 {
-    buildprintf("There was a problem initialising the engine: %s.\n", engineerrstr);
+    LOG_F(ERROR, "There was a problem initializing the engine: %s", engineerrstr);
 }
 
 int32_t app_main(int32_t argc, char const * const * argv)
 {
+#ifdef _WIN32
+#ifndef DEBUGGINGAIDS
+    if (!G_CheckCmdSwitch(argc, argv, "-noinstancechecking") && !windowsCheckAlreadyRunning())
+    {
+#ifdef EDUKE32_STANDALONE
+        if (!wm_ynbox(APPNAME, "It looks like " APPNAME " is already running.\n\n"
+#else
+        if (!wm_ynbox(APPNAME, "It looks like the game is already running.\n\n"
+#endif
+                      "Are you sure you want to start another copy?"))
+            return 3;
+    }
+#endif
+#endif
+
+    Ken_ExtPreInit(argc, argv);
+
 #if defined STARTUP_SETUP_WINDOW
     int cmdsetup = 0;
 #endif
     int i, j, k /*, l, fil*/, waitplayers, x1, y1, x2, y2;
     int other, /*packleng, */netparm;
 
-    OSD_SetLogFile("ekenbuild.log");
+#ifdef __APPLE__
+    if (!g_useCwd)
+    {
+        char cwd[BMAX_PATH];
+        char *homedir = Bgethomedir();
+        if (homedir)
+            Bsnprintf(cwd, sizeof(cwd), "%s/Library/Logs/" APPBASENAME ".log", homedir);
+        else
+            Bstrcpy(cwd, APPBASENAME ".log");
+        OSD_SetLogFile(cwd);
+        Xfree(homedir);
+    }
+    else
+#endif
+    OSD_SetLogFile(APPBASENAME ".log");
 
-    initprintf("%s %s\n", AppProperName, s_buildRev);
+    LOG_F(INFO, "%s %s", AppProperName, s_buildRev);
     PrintBuildInfo();
+
+    if (argc > 1)
+    {
+        char tempbuf[1024];
+        size_t constexpr size = ARRAY_SIZE(tempbuf);
+        size_t bytesWritten = Bsnprintf(tempbuf, size, "Application parameters:");
+        for (i = 1; i < argc; ++i)
+            bytesWritten += Bsnprintf(tempbuf + bytesWritten, size - bytesWritten, " %s", argv[i]);
+        LOG_F(INFO, "%s", tempbuf);
+    }
+
+    Ken_ExtInit();
 
     if (enginePreInit())
     {
-        wm_msgbox("Build Engine Initialisation Error",
-                  "There was a problem initialising the Build engine: %s", engineerrstr);
+        wm_msgbox("Build Engine Initialization Error",
+                  "There was a problem initializing the engine: %s", engineerrstr);
         exit(1);
     }
 
-    OSD_RegisterFunction("restartvid","restartvid: reinitialise the video mode",osdcmd_restartvid);
-    OSD_RegisterFunction("vidmode","vidmode [xdim ydim] [bpp] [fullscreen]: immediately change the video mode",osdcmd_vidmode);
+    OSD_RegisterFunction("restartvid","restartvid: reinitializes the video mode",osdcmd_restartvid);
+    OSD_RegisterFunction("vidmode","vidmode [xdim ydim] [bpp] [fullscreen]: changes the video mode",osdcmd_vidmode);
 #ifdef USE_OPENGL
     baselayer_osdcmd_vidmode_func = osdcmd_vidmode;
 #endif
-    OSD_RegisterFunction("map", "map [filename]: load a map", osdcmd_map);
+    OSD_RegisterFunction("map", "map [filename]: loads a map", osdcmd_map);
 
     wm_setapptitle(AppProperName);
 
@@ -496,7 +543,7 @@ int32_t app_main(int32_t argc, char const * const * argv)
     }
 
     if ((i = Ken_loadsetup(setupfilename)) < 0)
-        buildputs("Configuration file not found, using defaults.\n");
+        LOG_F(INFO, "Configuration file not found, using defaults.");
 
     wm_msgbox("Pre-Release Software Warning", "%s is not ready for public use. Proceed with caution!", AppProperName);
 
@@ -524,7 +571,7 @@ int32_t app_main(int32_t argc, char const * const * argv)
     //initmultiplayers(argc-netparm,&argv[netparm],option[4],option[5],0);
     if (initmultiplayersparms(argc-netparm,&argv[netparm]))
     {
-        buildputs("Waiting for players...\n");
+        LOG_F(INFO, "Waiting for players...");
         while (initmultiplayerscycle())
         {
             handleevents();
@@ -539,7 +586,14 @@ int32_t app_main(int32_t argc, char const * const * argv)
 
     artLoadFiles("tiles%03i.art",1048576);                      //Load artwork
     Ken_LoadVoxels();
-    if (!loaddefinitionsfile(G_DefFile())) buildputs("Definitions file loaded.\n");
+
+    char const * const deffile = G_DefFile();
+    uint32_t stime = timerGetTicks();
+    if (!loaddefinitionsfile(deffile))
+    {
+        uint32_t etime = timerGetTicks();
+        LOG_F(INFO, "Definitions file '%s' loaded in %d ms.", deffile, etime-stime);
+    }
 
     if (enginePostInit())
     {
@@ -567,7 +621,7 @@ int32_t app_main(int32_t argc, char const * const * argv)
     //Since it resets the tile cache for each call.
     if (tileCreate(SLIME,128,128) == 0)    //If enough memory
     {
-        buildputs("Not enough memory for slime!\n");
+        LOG_F(ERROR, "Not enough memory for slime!");
         exit(0);
     }
     if (tileCreate(MAXTILES-1,64,64) != 0)    //If enough memory
@@ -1868,7 +1922,7 @@ void shootgun(short snum, const vec3_t *vector,
                 daz2,                                   //Z vector of 3D ang
                 &hitinfo,CLIPMASK1);
 
-        if (wall[hitinfo.wall].picnum == KENPICTURE)
+        if ((unsigned)hitinfo.wall < MAXWALLS && wall[hitinfo.wall].picnum == KENPICTURE)
         {
             if (waloff[MAXTILES-1] != 0) wall[hitinfo.wall].picnum = MAXTILES-1;
             wsayfollow("hello.wav",4096L+(krand()&127)-64,256L,&wall[hitinfo.wall].x,&wall[hitinfo.wall].y,0);
@@ -1970,7 +2024,7 @@ void shootgun(short snum, const vec3_t *vector,
 
 void analyzesprites(int dax, int day)
 {
-    int i, j=0, k, *intptr;
+    int i, j=0, k;
     vec3_t *ospr;
     tspriteptr_t tspr;
 
@@ -2006,12 +2060,13 @@ void analyzesprites(int dax, int day)
                     if (voxid_PLAYER == -1)
                         break;
 
-                    tspr->cstat |= 48;
+                    tspr->clipdist |= TSPR_FLAGS_SLAB;
+                    tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT;
                     tspr->picnum = voxid_PLAYER;
 
-                    intptr = (int32_t *)voxoff[voxid_PLAYER][0];
-                    tspr->xrepeat = scale(tspr->xrepeat,56,intptr[2]);
-                    tspr->yrepeat = scale(tspr->yrepeat,56,intptr[2]);
+                    auto const voxptr = (int32_t const *)voxoff[voxid_PLAYER][0];
+                    tspr->xrepeat = scale(tspr->xrepeat,56,voxptr[2]);
+                    tspr->yrepeat = scale(tspr->yrepeat,56,voxptr[2]);
                     tspr->shade -= 6;
                 }
                 break;
@@ -2019,7 +2074,8 @@ void analyzesprites(int dax, int day)
                 if (voxid_BROWNMONSTER == -1)
                     break;
 
-                tspr->cstat |= 48;
+                tspr->clipdist |= TSPR_FLAGS_SLAB;
+                tspr->cstat &= ~CSTAT_SPRITE_ALIGNMENT;
                 tspr->picnum = voxid_BROWNMONSTER;
                 break;
             }
@@ -2403,7 +2459,7 @@ void statuslistcode(void)
             {
                 wsayfollow("monshoot.wav",5144L+(krand()&127)-64,256L,&sprite[i].x,&sprite[i].y,1);
 
-                doubvel = (TICSPERFRAME<<((ssync[target].bits&256)>0));
+                doubvel = TICSPERFRAME << ((ssync[target].bits&256) >> 7);
                 xvect = 0, yvect = 0;
                 if (ssync[target].fvel != 0)
                 {
@@ -2824,14 +2880,14 @@ void statuslistcode(void)
             {
                 if (sprite[hitobject&4095].picnum == BOUNCYMAT)
                 {
-                    if ((sprite[hitobject&4095].cstat&48) == 0)
+                    if ((sprite[hitobject&4095].cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING)
                     {
                         sprite[i].xvel = -sprite[i].xvel;
                         sprite[i].yvel = -sprite[i].yvel;
                         sprite[i].zvel = -sprite[i].zvel;
                         dist = 255;
                     }
-                    else if ((sprite[hitobject&4095].cstat&48) == 16)
+                    else if ((sprite[hitobject&4095].cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_WALL)
                     {
                         j = sprite[hitobject&4095].ang;
 
@@ -3252,7 +3308,7 @@ void processinput(short snum)
     //Movement code
     if ((ssync[snum].fvel|ssync[snum].svel) != 0)
     {
-        doubvel = (TICSPERFRAME<<((ssync[snum].bits&256)>0));
+        doubvel = TICSPERFRAME << ((ssync[snum].bits&256) >> 7);
 
         xvect = 0, yvect = 0;
         if (ssync[snum].fvel != 0)
@@ -3482,7 +3538,7 @@ void processinput(short snum)
                 neartagsector = i;
         }
 
-        if (wall[neartagwall].lotag == 7)  //Water fountain
+        if ((unsigned)neartagwall < MAXWALLS && wall[neartagwall].lotag == 7)  //Water fountain
         {
             if (wall[neartagwall].overpicnum == WATERFOUNTAIN)
             {
@@ -3703,7 +3759,7 @@ void drawscreen(short snum, int dasmoothratio)
     int x1, y1, x2, y2, ox1, oy1, ox2, oy2, dist, maxdist;
     vec3_t cpos;
     int choriz, czoom, tposx, tposy;
-    int tiltlock, *intptr, ovisibility, oparallaxvisibility;
+    int tiltlock, ovisibility, oparallaxvisibility;
     short cang, csect;
     fix16_t tang;
     char ch, *ptr, *ptr2, *ptr3, *ptr4;
@@ -3961,7 +4017,7 @@ void drawscreen(short snum, int dasmoothratio)
 #endif
             }
 
-            if ((gotpic[FLOORMIRROR>>3]&(1<<(FLOORMIRROR&7))) > 0)
+            if (bitmap_test(gotpic, FLOORMIRROR))
             {
                 dist = 0x7fffffff; i = 0;
                 for (k=floormirrorcnt-1; k>=0; k--)
@@ -4019,7 +4075,7 @@ void drawscreen(short snum, int dasmoothratio)
                     }
                     videoEndDrawing(); //}}}
                 }
-                gotpic[FLOORMIRROR>>3] &= ~(1<<(FLOORMIRROR&7));
+                bitmap_clear(gotpic, FLOORMIRROR);
             }
 
 
@@ -4031,13 +4087,16 @@ void drawscreen(short snum, int dasmoothratio)
                 view(playersprite[snum],&cpos,&csect,cang,choriz);
             }
 
-            //WARNING!  Assuming (MIRRORLABEL&31) = 0 and MAXMIRRORS = 64
-            intptr = (int *)&gotpic[MIRRORLABEL>>3];   // CHECK!
-            if (intptr[0]|intptr[1])
+            EDUKE32_STATIC_ASSERT((MIRRORLABEL & 31) == 0);
+            EDUKE32_STATIC_ASSERT(MAXMIRRORS == 64);
+            auto const gotpicptr = (uint32_t const *)&gotpic[MIRRORLABEL>>3];
+            auto const gotmirrors = gotpicptr[0] | gotpicptr[1];
+
+            if (gotmirrors)
                 for (i=MAXMIRRORS-1; i>=0; i--)
-                    if (gotpic[(i+MIRRORLABEL)>>3]&(1<<(i&7)))
+                    if (bitmap_test(gotpic, i+MIRRORLABEL))
                     {
-                        gotpic[(i+MIRRORLABEL)>>3] &= ~(1<<(i&7));
+                        bitmap_clear(gotpic, i+MIRRORLABEL);
 
                         //Prepare drawrooms for drawing mirror and calculate reflected
                         //position into tposx, tposy, and tang (tpos.z == cpos.z)
@@ -4054,7 +4113,8 @@ void drawscreen(short snum, int dasmoothratio)
 
                         drawrooms(tposx,tposy,cpos.z,fix16_to_int(tang),choriz,mirrorsector[i]|MAXSECTORS);
                         for (j=0,tspr=&tsprite[0]; j<spritesortcnt; j++,tspr++)
-                            if ((tspr->cstat&48) == 0) tspr->cstat |= 4;
+                            if ((tspr->cstat & CSTAT_SPRITE_ALIGNMENT) == CSTAT_SPRITE_ALIGNMENT_FACING)
+                                tspr->cstat |= 4;
                         analyzesprites(tposx,tposy);
                         renderDrawMasks();
 
@@ -4131,9 +4191,9 @@ void drawscreen(short snum, int dasmoothratio)
     //Only animate lava if its picnum is on screen
     //gotpic is a bit array where the tile number's bit is set
     //whenever it is drawn (ceilings, walls, sprites, etc.)
-    if ((gotpic[SLIME>>3]&(1<<(SLIME&7))) > 0)
+    if (bitmap_test(gotpic, SLIME))
     {
-        gotpic[SLIME>>3] &= ~(1<<(SLIME&7));
+        bitmap_clear(gotpic, SLIME);
         if (waloff[SLIME] != 0)
         {
             movelava((char *)waloff[SLIME]);
@@ -4141,7 +4201,7 @@ void drawscreen(short snum, int dasmoothratio)
         }
     }
 
-    if ((show2dsector[cursectnum[snum]>>3]&(1<<(cursectnum[snum]&7))) == 0)
+    if (!bitmap_test(show2dsector, cursectnum[snum]))
         searchmap(cursectnum[snum]);
 
     if (dimensionmode[snum] != 3)
@@ -4375,7 +4435,7 @@ void fakedomovethings(void)
 
     if ((syn->fvel|syn->svel) != 0)
     {
-        doubvel = (TICSPERFRAME<<((syn->bits&256)>0));
+        doubvel = TICSPERFRAME << ((syn->bits&256) >> 7);
 
         xvect = 0, yvect = 0;
         if (syn->fvel != 0)
@@ -5002,9 +5062,9 @@ void warpsprite(short spritenum)
     copybuf(&sprite[spritenum].x,&osprite[spritenum].x,3);
     changespritesect(spritenum,dasectnum);
 
-    show2dsprite[spritenum>>3] &= ~(1<<(spritenum&7));
-    if (show2dsector[dasectnum>>3]&(1<<(dasectnum&7)))
-        show2dsprite[spritenum>>3] |= (1<<(spritenum&7));
+    bitmap_clear(show2dsprite, spritenum);
+    if (bitmap_test(show2dsector, dasectnum))
+        bitmap_set(show2dsprite, spritenum);
 }
 
 void initlava(void)
@@ -5308,10 +5368,11 @@ int loadgame(void)
 {
     int dummy = 0;
     int i;
-    int fil;
+    buildvfs_kfd fil;
     int tmpanimateptr[MAXANIMATES];
 
-    if ((fil = kopen4load("save0000.gam",0)) == -1) return -1;
+    if ((fil = kopen4load("save0000.gam",0)) == buildvfs_kfd_invalid)
+        return -1;
 
     kdfread(&numplayers,4,1,fil);
     kdfread(&myconnectindex,4,1,fil);
@@ -5955,8 +6016,8 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
         {
             k = wal->nextwall; if (k < 0) continue;
 
-            if ((show2dwall[j>>3]&(1<<(j&7))) == 0) continue;
-            if ((k > j) && ((show2dwall[k>>3]&(1<<(k&7))) > 0)) continue;
+            if (!bitmap_test(show2dwall, j)) continue;
+            if (k > j && bitmap_test(show2dwall, k)) continue;
 
             if (sector[wal->nextsector].ceilingz == z1)
                 if (sector[wal->nextsector].floorz == z2)
@@ -5992,7 +6053,7 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
     k = playersprite[screenpeek];
     for (i=0; i<numsectors; i++)
         for (j=headspritesect[i]; j>=0; j=nextspritesect[j])
-            if ((show2dsprite[j>>3]&(1<<(j&7))) > 0)
+            if (bitmap_test(show2dsprite, j))
             {
                 spr = &sprite[j]; if (spr->cstat&0x8000) continue;
                 col = 56;
@@ -6016,9 +6077,9 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
                     spry = osprite[j].y+mulscale16(spry-osprite[j].y,l);
                 }
 
-                switch (spr->cstat&48)
+                switch (spr->cstat & CSTAT_SPRITE_ALIGNMENT)
                 {
-                case 0:
+                case CSTAT_SPRITE_ALIGNMENT_FACING:
                     ox = sprx-cposx; oy = spry-cposy;
                     x1 = dmulscale16(ox,xvect,-oy,yvect);
                     y1 = dmulscale16(oy,xvect2,ox,yvect2);
@@ -6048,7 +6109,7 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
                     }
                     else
                     {
-                        if (((gotsector[i>>3]&(1<<(i&7))) > 0) && (czoom > 96))
+                        if (bitmap_test(gotsector, i) && czoom > 96)
                         {
                             daang = (spr->ang-cang)&2047;
                             if (j == playersprite[screenpeek]) { x1 = 0; y1 = 0; daang = 0; }
@@ -6056,7 +6117,7 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
                         }
                     }
                     break;
-                case 16:
+                case CSTAT_SPRITE_ALIGNMENT_WALL:
                     x1 = sprx; y1 = spry;
                     tilenum = spr->picnum;
                     xoff = (int)picanm[tilenum].xofs+((int)spr->xoffset);
@@ -6079,7 +6140,7 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
                                 x2+(xdim<<11),y2+(ydim<<11),col);
 
                     break;
-                case 32:
+                case CSTAT_SPRITE_ALIGNMENT_FLOOR:
                     if (dimensionmode[screenpeek] == 1)
                     {
                         tilenum = spr->picnum;
@@ -6147,7 +6208,7 @@ void drawoverheadmap(int cposx, int cposy, int czoom, short cang)
         {
             if (wal->nextwall >= 0) continue;
 
-            if ((show2dwall[j>>3]&(1<<(j&7))) == 0) continue;
+            if (!bitmap_test(show2dwall, j)) continue;
 
             if (tilesiz[wal->picnum].x == 0) continue;
             if (tilesiz[wal->picnum].y == 0) continue;
@@ -6302,14 +6363,19 @@ void searchmap(short startsector)
     short dapic;
     walltype *wal;
 
-    if ((startsector < 0) || (startsector >= numsectors)) return;
-    for (i=0; i<(MAXSECTORS>>3); i++) show2dsector[i] = 0;
-    for (i=0; i<(MAXWALLS>>3); i++) show2dwall[i] = 0;
-    for (i=0; i<(MAXSPRITES>>3); i++) show2dsprite[i] = 0;
+    if (startsector < 0 || startsector >= numsectors)
+        return;
+
+    for (i = 0; i < bitmap_size(MAXWALLS); i++)
+        show2dwall[i] = 0;
+    for (i = 0; i < bitmap_size(MAXSPRITES); i++)
+        show2dsprite[i] = 0;
+    for (i = 0; i < bitmap_size(MAXSECTORS); i++)
+        show2dsector[i] = 0;
 
     //Search your area recursively & set all show2dsector/show2dwalls
     tempshort[0] = startsector;
-    show2dsector[startsector>>3] |= (1<<(startsector&7));
+    bitmap_set(show2dsector, startsector);
     dapic = sector[startsector].ceilingpicnum;
     if (waloff[dapic] == 0) tileLoad(dapic);
     dapic = sector[startsector].floorpicnum;
@@ -6321,16 +6387,16 @@ void searchmap(short startsector)
         endwall = startwall + sector[dasect].wallnum;
         for (i=startwall,wal=&wall[startwall]; i<endwall; i++,wal++)
         {
-            show2dwall[i>>3] |= (1<<(i&7));
+            bitmap_set(show2dwall, i);
             dapic = wall[i].picnum;
             if (waloff[dapic] == 0) tileLoad(dapic);
             dapic = wall[i].overpicnum;
             if (((dapic&0xfffff000) == 0) && (waloff[dapic] == 0)) tileLoad(dapic);
 
             j = wal->nextsector;
-            if ((j >= 0) && ((show2dsector[j>>3]&(1<<(j&7))) == 0))
+            if (j >= 0 && !bitmap_test(show2dsector, j))
             {
-                show2dsector[j>>3] |= (1<<(j&7));
+                bitmap_set(show2dsector, j);
 
                 dapic = sector[j].ceilingpicnum;
                 if (waloff[dapic] == 0) tileLoad(dapic);
@@ -6343,7 +6409,7 @@ void searchmap(short startsector)
 
         for (i=headspritesect[dasect]; i>=0; i=nextspritesect[i])
         {
-            show2dsprite[i>>3] |= (1<<(i&7));
+            bitmap_set(show2dsprite, i);
             dapic = sprite[i].picnum;
             if (waloff[dapic] == 0) tileLoad(dapic);
         }

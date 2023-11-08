@@ -411,7 +411,7 @@ DoShadows(tspriteptr_t tsp, int viewz, SWBOOL mirror)
     loz = tu->loz;
     if (tu->lo_sp)
     {
-        if (!TEST(tu->lo_sp->cstat, CSTAT_SPRITE_ALIGNMENT_WALL | CSTAT_SPRITE_ALIGNMENT_FLOOR))
+        if (!TEST(tu->lo_sp->cstat, CSTAT_SPRITE_ALIGNMENT_MASK))
         {
             loz = DoShadowFindGroundPoint(tsp);
         }
@@ -574,12 +574,6 @@ DoMotionBlur(tspritetype const * const tsp)
         spritesortcnt++;
     }
 
-}
-
-void SetVoxelSprite(SPRITEp sp, short pic)
-{
-    SET(sp->cstat, CSTAT_SPRITE_ALIGNMENT_SLAB);
-    sp->picnum = pic;
 }
 
 void WarpCopySprite(void)
@@ -1739,7 +1733,6 @@ void DrawCheckKeys(PLAYERp pp)
 void DrawMessageInput(void)
 {
     short w,h;
-    static SWBOOL cur_show;
     short c;
 
     // Used to make cursor fade in and out
@@ -1748,8 +1741,6 @@ void DrawMessageInput(void)
     if (MessageInputMode)
     {
         MNU_MeasureString(MessageInputString, &w, &h);
-
-        cur_show ^= 1;
 
         MNU_DrawString(TEXT_XCENTER(w), MESSAGE_LINE, MessageInputString,1,ROTATE_SPRITE_SCREEN_CLIP);
         rotatesprite((TEXT_XCENTER(w)+w+7)<<16,(MESSAGE_LINE+3)<<16,64<<9,0,COINCURSOR+((totalclock>>3)%7),c,0,
@@ -1760,7 +1751,6 @@ void DrawMessageInput(void)
 void DrawMessageInput(void)
 {
     short w,h;
-    static SWBOOL cur_show;
     short c;
 
     // Used to make cursor fade in and out
@@ -1769,8 +1759,6 @@ void DrawMessageInput(void)
     if (MessageInputMode)
     {
         MNU_MeasureSmallString(MessageInputString, &w, &h);
-
-        cur_show ^= 1;
 
         minigametext(TEXT_XCENTER(w), MESSAGE_LINE, MessageInputString,ROTATE_SPRITE_SCREEN_CLIP);
         rotatesprite((TEXT_XCENTER(w)+w+2)<<16,(MESSAGE_LINE+1)<<16,20000,0,COINCURSOR+(((int32_t) totalclock>>3)%7),c,0,ROTATE_SPRITE_SCREEN_CLIP,0,0,xdim-1,ydim-1);
@@ -1783,7 +1771,6 @@ void DrawConInput(void)
 #define PANELINPUTX 30
 #define PANELINPUTY 100
     short w,h;
-    static SWBOOL cur_show;
     short c;
 
     // Used to make cursor fade in and out
@@ -1792,8 +1779,6 @@ void DrawConInput(void)
     if (ConInputMode)
     {
         MNU_MeasureSmallString(MessageInputString, &w, &h);
-
-        cur_show ^= 1;
 
         MNU_DrawSmallString(PANELINPUTX, PANELINPUTY, MessageInputString,1,17);
         rotatesprite((PANELINPUTX+w+1)<<16,(PANELINPUTY)<<16,65536L,0,2992,c,0,ROTATE_SPRITE_SCREEN_CLIP,0,0,xdim-1,ydim-1);
@@ -2209,9 +2194,9 @@ void FAF_DrawRooms(int x, int y, int z, fix16_t q16ang, fix16_t q16horiz, short 
     TRAVERSE_SPRITE_STAT(headspritestat[STAT_CEILING_FLOOR_PIC_OVERRIDE], i, nexti)
     {
         // manually set gotpic
-        if (TEST_GOTSECTOR(sprite[i].sectnum))
+        if (bitmap_test(gotsector, sprite[i].sectnum))
         {
-            SET_GOTPIC(FAF_MIRROR_PIC);
+            bitmap_set(gotpic, FAF_MIRROR_PIC);
         }
 
         if (SPRITE_TAG3(i) == 0)
@@ -2268,8 +2253,6 @@ drawscreen(PLAYERp pp)
 #if 0
     if (TenScreenMode)
     {
-#define TEN_PIC 5109
-
         flushperms();
         // note - could put Order Info Pages at the top like this also
         rotatesprite(0,0,65536L,0,TEN_PIC,0,0,
@@ -2455,9 +2438,9 @@ drawscreen(PLAYERp pp)
     // Only animate lava if its picnum is on screen
     // gotpic is a bit array where the tile number's bit is set
     // whenever it is drawn (ceilings, walls, sprites, etc.)
-    if ((gotpic[SLIME >> 3] & (1 << (SLIME & 7))) > 0)
+    if (bitmap_test(gotpic, SLIME))
     {
-        gotpic[SLIME >> 3] &= ~(1 << (SLIME & 7));
+        bitmap_clear(gotpic, SLIME);
 
 #if 0
         if (waloff[SLIME])
@@ -2470,7 +2453,7 @@ drawscreen(PLAYERp pp)
 
     if (i >= 0)
     {
-        show2dsector[i>>3] |= (1<<(i&7));
+        bitmap_set(show2dsector, i);
         walltype *wal = &wall[sector[i].wallptr];
         for (j=sector[i].wallnum; j>0; j--,wal++)
         {
@@ -2481,7 +2464,7 @@ drawscreen(PLAYERp pp)
             if (nextwall < MAXWALLS && wall[nextwall].cstat&0x0071) continue;
             if (sector[i].lotag == 32767) continue;
             if (sector[i].ceilingz >= sector[i].floorz) continue;
-            show2dsector[i>>3] |= (1<<(i&7));
+            bitmap_set(show2dsector, i);
         }
     }
 
@@ -2721,7 +2704,3 @@ ScreenSaveSetup(void)
 
     return SAVE_SCREEN_TILE;
 }
-
-
-
-

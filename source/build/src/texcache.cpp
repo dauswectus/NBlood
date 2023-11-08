@@ -2,6 +2,7 @@
 
 #include "baselayer.h"
 #include "build.h"
+#include "engine_priv.h"
 #include "lz4.h"
 #include "hightile.h"
 #include "polymost.h"
@@ -106,7 +107,10 @@ static pthtyp *texcache_tryart(int32_t const dapicnum, int32_t const dapalnum, i
             if (pth->flags & PTH_INVALIDATED)
             {
                 pth->flags &= ~PTH_INVALIDATED;
-                gloadtile_art(dapicnum, searchpalnum, tintpalnum, dashade, dameth, pth, 0);
+
+                // this fixes a problem where per-map art would not be refreshed properly in Polymost between maps, where both maps used mapart
+                int32_t ismapart = (tilefilenum[dapicnum] >= MAXARTFILES_BASE) ? 1 : 0;
+                gloadtile_art(dapicnum, searchpalnum, tintpalnum, dashade, dameth, pth, ismapart);
                 pth->palnum = dapalnum;
             }
 
@@ -915,14 +919,14 @@ void texcache_setupmemcache(void)
     if (error || !texcache.rw_mmap.is_mapped())
     {
         if (error)
-            initprintf("Failed mapping texcache! Error %d (%s).\n", error.value(), error.message().c_str());
+            LOG_F(ERROR, "Failed mapping texcache! Error %d: %s", error.value(), error.message().c_str());
 
         texcache_clearmemcache();
         return;
     }
     else
     {
-        initprintf("Mapped %d byte texcache\n", (int)texcache.rw_mmap.length());
+        LOG_F(INFO, "Mapped %d byte texcache", (int)texcache.rw_mmap.length());
     }
 }
 
@@ -955,7 +959,13 @@ voxmodel_t* voxcache_fetchvoxmodel(const char* const cacheid)
     voxmodel_t* vm = (voxmodel_t*)Xcalloc(1, sizeof(voxmodel_t));
 
     texcache.dataFilePos = texcache.entries[i]->offset;
-    texcache_readdata(&voxd, sizeof(voxd));
+
+    if (texcache_readdata(&voxd, sizeof(voxd)) || voxd.compressed_size <= 0)
+    {
+        Xfree(vm);
+        return NULL;
+    }
+
     vm->mytexx = voxd.mytexx;
     vm->mytexy = voxd.mytexy;
     vm->qcnt = voxd.qcnt;
@@ -968,8 +978,14 @@ voxmodel_t* voxcache_fetchvoxmodel(const char* const cacheid)
     auto bytes = LZ4_decompress_safe(compressed_data, decompressed_data, voxd.compressed_size, totalsize);
     Xfree(compressed_data);
 
-    UNREFERENCED_PARAMETER(bytes);
     Bassert(bytes > 0);
+
+    if (bytes <= 0)
+    {
+        Xfree(decompressed_data);
+        Xfree(vm);
+        return NULL;
+    }
 
     vm->vertex = (GLfloat*)Xmalloc(vertexsize);
     Bmemcpy(vm->vertex, decompressed_data, vertexsize);

@@ -52,7 +52,7 @@ int MV_XMPInterpolation = XMP_INTERP_NEAREST;
 #endif
 
 
-static void MV_StopVoice(VoiceNode *voice);
+static void MV_StopVoice(VoiceNode *voice, bool useCallBack = true);
 static void MV_ServiceVoc(void);
 
 static VoiceNode *MV_GetVoice(int handle);
@@ -114,7 +114,7 @@ static bool MV_Mix(VoiceNode * const voice, int const buffer)
         if (!voice->task.ready())
             return true;
 
-        auto result = voice->task.get();        
+        auto result = voice->task.get();
 
         if (result != MV_Ok)
         {
@@ -206,9 +206,9 @@ static void MV_FreeHandle(VoiceNode* voice)
     LL::Move(voice, &VoicePool);
 }
 
-static void MV_CleanupVoice(VoiceNode* voice)
+static void MV_CleanupVoice(VoiceNode* voice, bool useCallBack = true)
 {
-    if (MV_CallBackFunc)
+    if (useCallBack && MV_CallBackFunc)
         MV_CallBackFunc(voice->callbackval);
 
     switch (voice->wavetype)
@@ -231,9 +231,9 @@ static void MV_CleanupVoice(VoiceNode* voice)
     }
 }
 
-static void MV_StopVoice(VoiceNode *voice)
+void MV_StopVoice(VoiceNode *voice, bool useCallBack)
 {
-    MV_CleanupVoice(voice);
+    MV_CleanupVoice(voice, useCallBack);
     MV_Lock();
     // move the voice from the play list to the free list
     MV_FreeHandle(voice);
@@ -380,7 +380,7 @@ int MV_VoicePlaying(int handle)
     return MV_Installed && voice != nullptr && !voice->Paused.load(std::memory_order_relaxed);
 }
 
-int MV_KillAllVoices(void)
+int MV_KillAllVoices(bool useCallBack)
 {
     if (!MV_Installed)
         return MV_Error;
@@ -404,7 +404,7 @@ int MV_KillAllVoices(void)
             continue;
         }
 
-        MV_Kill(voice->handle);
+        MV_Kill(voice->handle, useCallBack);
         voice = VoiceList.prev;
     }
 
@@ -413,14 +413,14 @@ int MV_KillAllVoices(void)
     return MV_Ok;
 }
 
-int MV_Kill(int handle)
+int MV_Kill(int handle, bool useCallBack)
 {
     auto voice = MV_BeginService(handle);
 
     if (voice == nullptr)
         return MV_Error;
 
-    MV_StopVoice(voice);
+    MV_StopVoice(voice, useCallBack);
     MV_EndService();
 
     return MV_Ok;
@@ -605,7 +605,7 @@ int MV_GetFrequency(int handle, int *frequency)
 ---------------------------------------------------------------------*/
 
 void MV_SetVoiceMixMode(VoiceNode *voice)
-{    
+{
     // stereo look-up table
     static constexpr decltype(voice->mix) mixslut[]
     = { MV_MixStereo<uint8_t, int16_t>,       MV_MixMono<uint8_t, int16_t>,       MV_MixStereo<int16_t, int16_t>,       MV_MixMono<int16_t, int16_t>,
