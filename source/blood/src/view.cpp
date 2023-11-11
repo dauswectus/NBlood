@@ -1309,6 +1309,10 @@ void viewDrawStats(PLAYER *pPlayer, int x, int y)
     y += nHeight+1;
     sprintf(buffer, "S:%d/%d", gSecretMgr.nNormalSecretsFound, max(gSecretMgr.nNormalSecretsFound, gSecretMgr.nAllSecrets)); // if we found more than there are, increase the total - some levels have a bugged counter
     viewDrawText(3, buffer, x, y, 20, 0, 0, true, 256);
+    y += nHeight + 1;
+    x += 210; 
+    sprintf(buffer, "%d", gPlayerSpeed/10000);
+    viewDrawText(3, buffer, x, y, 20, 0, 0, true, 256);
 }
 
 struct POWERUPDISPLAY

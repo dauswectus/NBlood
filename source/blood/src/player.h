@@ -263,6 +263,8 @@ extern ClockTicks  gPlayerScoreTicks[kMaxPlayers];
 extern AMMOINFO    gAmmoInfo[];
 extern POWERUPINFO gPowerUpInfo[kMaxPowerUps];
 
+extern int         gPlayerSpeed;
+
 inline bool IsTargetTeammate(PLAYER *pSourcePlayer, spritetype *pTargetSprite)
 {
     if (pSourcePlayer == NULL)

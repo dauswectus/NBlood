@@ -67,6 +67,8 @@ bool gRedFlagDropped = false;
 int gPlayerScores[kMaxPlayers];
 ClockTicks gPlayerScoreTicks[kMaxPlayers];
 
+int gPlayerSpeed;
+
 // V = has effect in game, X = no effect in game
 POWERUPINFO gPowerUpInfo[kMaxPowerUps] = {
     { -1, 1, 1, 1 },            // 00: V keys
@@ -1798,6 +1800,7 @@ void playerProcess(PLAYER *pPlayer)
     }
     ProcessInput(pPlayer);
     int nSpeed = approxDist(xvel[nSprite], yvel[nSprite]);
+    gPlayerSpeed = nSpeed;
     pPlayer->zViewVel = interpolate(pPlayer->zViewVel, zvel[nSprite], 0x7000);
     int dz = pPlayer->pSprite->z-pPosture->eyeAboveZ-pPlayer->zView;
     if (dz > 0)
