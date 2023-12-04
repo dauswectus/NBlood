@@ -318,7 +318,7 @@ void MyLoadSave::Load(void)
     ClockTicks nGameClock;
     Read(&totalclock, sizeof(totalclock));
     totalclock = nGameClock;
-    Read(&gLevelTime, sizeof(gLevelTime));
+    //Read(&gLevelTime, sizeof(gLevelTime));
     Read(&gPaused, sizeof(gPaused));
     Read(&gbAdultContent, sizeof(gbAdultContent));
     Read(baseWall, sizeof(baseWall[0])*numwalls);
@@ -434,7 +434,7 @@ void MyLoadSave::Save(void)
     Write(&gFrame, sizeof(gFrame));
     ClockTicks nGameClock = totalclock;
     Write(&nGameClock, sizeof(nGameClock));
-    Write(&gLevelTime, sizeof(gLevelTime));
+    //Write(&gLevelTime, sizeof(gLevelTime));
     Write(&gPaused, sizeof(gPaused));
     Write(&gbAdultContent, sizeof(gbAdultContent));
     Write(baseWall, sizeof(baseWall[0])*numwalls);
