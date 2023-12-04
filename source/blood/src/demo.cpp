@@ -394,6 +394,9 @@ _DEMOPLAYBACK:
                 gSkill = gGameOptions.nDifficulty;
                 for (int i = 0; i < 8; i++)
                     playerInit(i, 0);
+
+                levelAddUserMap("museum.map");
+
                 StartLevel(&gGameOptions);
                 for (int i = 0; i < 8; i++)
                 {
