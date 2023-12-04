@@ -796,10 +796,48 @@ void StartLevel(GAMEOPTIONS *gameOptions)
     FixupSecretCounter(1, 3, 19);
     FixupSecretCounter(2, 0, 10);
     FixupSecretCounter(3, 7, 1);
+    if (!Bstrcmp(pINISelected->zName, "CRYPTIC.INI"))
+    {
+        FixupSecretCounter(0, 1, 3);
+        FixupSecretCounter(0, 2, 4);
+        FixupSecretCounter(0, 3, 10);
+        FixupSecretCounter(0, 4, 4);
+        FixupSecretCounter(0, 5, 7);
+        FixupSecretCounter(0, 7, 0);
+        FixupSecretCounter(0, 8, 7);
+    }
 
-    FixupKillCounter(0, 5, -1); //A gargoyle out of bounds
-    FixupKillCounter(1, 4, -4); //4 Zombies out of bounds
-    FixupKillCounter(3, 5, -4); //4 Spiders out of bounds
+    switch (gSkill)
+    {
+    case 0 : 
+
+        if (Bstrcmp(pINISelected->zName, "CRYPTIC.INI"))
+        {
+            FixupKillCounter(0, 5, -1); //A gargoyle out of bounds
+            FixupKillCounter(1, 4, -4); //4 Zombies out of bounds
+            FixupKillCounter(3, 5, -4); //4 Spiders out of bounds
+        }
+        break;
+    case 2 :
+        if (Bstrcmp(pINISelected->zName, "CRYPTIC.INI"))
+        {
+            FixupKillCounter(0, 5, -3); //3 gargoyles out of bounds
+            FixupKillCounter(1, 4, -4); //4 Zombies out of bounds
+            FixupKillCounter(3, 5, -6); //6 Spiders out of bounds
+        }
+        break;
+    case 4 :
+        if (Bstrcmp(pINISelected->zName, "CRYPTIC.INI"))
+        {
+            FixupKillCounter(0, 5, -4); //4 gargoyles out of bounds
+            FixupKillCounter(1, 4, -4); //4 Zombies out of bounds
+            FixupKillCounter(3, 5, -8); //8 Spiders out of bounds
+        }
+        break;
+    default:
+        break;
+    }
+    
 
     if (gGameOptions.nLevel == 0 && !endMultiEpisode)
     {
