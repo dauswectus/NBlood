@@ -111,7 +111,7 @@ extern palette_t CrosshairColors;
 extern bool g_isAlterDefaultCrosshair;
 extern float r_ambientlight, r_ambientlightrecip;
 extern int gLastPal;
-extern int32_t gShowFps, gFramePeriod;
+extern int32_t gShowFps, gFramePeriod, gShowSpeedo;
 
 
 static inline double calcFrameDelay(unsigned int const maxFPS) { return maxFPS ? timerGetPerformanceFrequency() / (double)maxFPS : 0.0; }

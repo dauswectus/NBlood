@@ -1800,7 +1800,10 @@ void playerProcess(PLAYER *pPlayer)
     }
     ProcessInput(pPlayer);
     int nSpeed = approxDist(xvel[nSprite], yvel[nSprite]);
-    gPlayerSpeed = nSpeed;
+    double mxvel = abs(xvel[nSprite]);
+    double myvel = abs(yvel[nSprite]);
+    double sqrsum = (mxvel * mxvel) + (myvel * myvel);
+    gPlayerSpeed = sqrt(sqrsum);
     pPlayer->zViewVel = interpolate(pPlayer->zViewVel, zvel[nSprite], 0x7000);
     int dz = pPlayer->pSprite->z-pPosture->eyeAboveZ-pPlayer->zView;
     if (dz > 0)
