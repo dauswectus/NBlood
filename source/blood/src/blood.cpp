@@ -889,7 +889,6 @@ void StartLevel(GAMEOPTIONS *gameOptions)
     }
     else
     {
-        OSD_Printf(OSDTEXT_RED "endMultiEpisode -> false\n");
         endMultiEpisode = false;
     }
 

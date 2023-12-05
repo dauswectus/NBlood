@@ -1093,7 +1093,7 @@ int32_t registerosdcommands(void)
         { "vid_contrast","contrast correction",(void *) &g_videoContrast, CVAR_FLOAT|CVAR_FUNCPTR, (int)floor(MIN_CONTRAST), (int)ceil(MAX_CONTRAST) },
         { "vid_saturation","saturation correction",(void *) &g_videoSaturation, CVAR_FLOAT|CVAR_FUNCPTR, (int)floor(MIN_SATURATION), (int)ceil(MAX_SATURATION) },
 //        { "wchoice","sets weapon autoselection order", (void *)ud.wchoice, CVAR_STRING|CVAR_FUNCPTR, 0, MAX_WEAPONS },
-        { "r_showSpeedo", "show the speedo meter", (void*)&gShowSpeedo, CVAR_INT, 0, 1 },
+        { "sr_showSpeedo", "show the speedo meter", (void*)&gShowSpeedo, CVAR_INT, 0, 1 },
     };
 //
 //    osdcmd_cheatsinfo_stat.cheatnum = -1;
